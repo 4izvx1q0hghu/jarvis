@@ -13,12 +13,16 @@ export function ActionCard() {
   const card = useActionCard((s) => s.card)
 
   useEffect(() => {
-    if (!card) return
+    if (!card || card.keep) return
     const t = setTimeout(closeCard, 45_000)
     return () => clearTimeout(t)
   }, [card])
 
   if (!card) return null
+  const after = () => {
+    if (!card.keep) setTimeout(closeCard, 500)
+  }
+  const extra = card.extra
 
   return (
     <div style={styles.wrap} role="dialog" aria-label={card.title}>
@@ -34,20 +38,35 @@ export function ActionCard() {
             ))}
           </ul>
         )}
+        {(card.href || extra) && (
+          <div style={styles.row}>
+            {card.href && (
+              <a
+                href={card.href}
+                style={styles.primary}
+                download={card.download}
+                target={card.href.startsWith('http') ? '_blank' : undefined}
+                rel="noreferrer"
+                onClick={after}
+              >
+                {card.button ?? 'Open'}
+              </a>
+            )}
+            {extra?.href && (
+              <a href={extra.href} style={styles.primary} rel="noreferrer" onClick={after}>
+                {extra.label}
+              </a>
+            )}
+            {extra?.onClick && (
+              <button type="button" style={styles.primaryButton} onClick={extra.onClick}>
+                {extra.label}
+              </button>
+            )}
+          </div>
+        )}
         <div style={styles.row}>
-          {card.href && (
-            <a
-              href={card.href}
-              style={styles.primary}
-              target={card.href.startsWith('http') ? '_blank' : undefined}
-              rel="noreferrer"
-              onClick={() => setTimeout(closeCard, 500)}
-            >
-              {card.button ?? 'Open'}
-            </a>
-          )}
           <button type="button" style={styles.secondary} onClick={closeCard}>
-            {card.href ? 'Cancel' : 'Close'}
+            {card.href && !card.keep ? 'Cancel' : 'Close'}
           </button>
         </div>
       </div>
@@ -83,7 +102,14 @@ const styles: Record<string, CSSProperties> = {
     fontFamily: 'system-ui, -apple-system, sans-serif',
   },
   title: { fontSize: 18, fontWeight: 600, color: cyan },
-  detail: { fontSize: 15, opacity: 0.85, wordBreak: 'break-word' },
+  detail: {
+    fontSize: 15,
+    opacity: 0.85,
+    wordBreak: 'break-word',
+    whiteSpace: 'pre-wrap',
+    maxHeight: '38vh',
+    overflowY: 'auto',
+  },
   list: { margin: 0, padding: '0 0 0 18px', display: 'grid', gap: 4, fontSize: 15 },
   item: { wordBreak: 'break-word' },
   row: { display: 'flex', gap: 10, marginTop: 4 },
@@ -97,6 +123,16 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     fontSize: 16,
     textDecoration: 'none',
+  },
+  primaryButton: {
+    flex: 1,
+    padding: '14px 12px',
+    borderRadius: 10,
+    border: 'none',
+    background: cyan,
+    color: '#02060a',
+    fontWeight: 700,
+    fontSize: 16,
   },
   secondary: {
     flex: 1,

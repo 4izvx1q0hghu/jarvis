@@ -7,6 +7,7 @@ import { Diagnostics } from './ui/Diagnostics'
 import { ActionCard } from './ui/ActionCard'
 import { phoneAction, showCard } from './lib/actions'
 import { memoryAction } from './lib/memory'
+import { offerEmail, offerPdf, parseEmail } from './lib/documents'
 import { InfoPanel } from './ui/InfoPanel'
 import { WakeVoice } from './ui/WakeVoice'
 import { TapToHear } from './ui/TapToHear'
@@ -323,6 +324,13 @@ export default function App() {
         })
         if (panel.imageQuery && !imagesFor) addGallery(panel.imageQuery)
       }
+
+      // A document she wrote becomes a PDF; an email she drafted opens in the
+      // user's own mail app. Nothing leaves the phone until they tap.
+      const doc = splitter.pdf()
+      const mail = parseEmail(splitter.email())
+      if (doc) void offerPdf(doc, mail)
+      else if (mail) offerEmail(mail)
 
       // The bridge keeps conversation state in its own session, so history is
       // only threaded through on the direct path.

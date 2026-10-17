@@ -47,45 +47,70 @@ export const useInfoPanel = create<{ panel: InfoPanel | null }>(() => ({ panel: 
 export const showInfo = (panel: InfoPanel) => useInfoPanel.setState({ panel })
 export const closeInfo = () => useInfoPanel.setState({ panel: null })
 
-const OPEN = '[[PANEL]]'
-const CLOSE = '[[/PANEL]]'
+/** The blocks a reply may carry after its spoken part, none of them read aloud:
+ *  the on-screen panel, a document to make into a PDF, an email draft. */
+const BLOCKS = ['PANEL', 'PDF', 'EMAIL'] as const
+type Block = (typeof BLOCKS)[number]
 
 /**
- * Splits a streamed answer into what is spoken and what goes on screen. Markers
- * can arrive split across chunks, so a tail that could be the start of one is
- * held back until the next chunk settles it.
+ * Splits a streamed answer into what is spoken and the blocks that go on
+ * screen. Markers can arrive split across chunks, so a tail that could be the
+ * start of one is held back until the next chunk settles it.
  */
 export function makePanelSplitter() {
-  let inPanel = false
+  let inside: Block | null = null
   let carry = ''
-  let panel = ''
+  const captured: Record<Block, string> = { PANEL: '', PDF: '', EMAIL: '' }
+
+  /** The partial-marker tail of `s` worth holding back, given what could come next. */
+  const holdBack = (s: string, markers: string[]): number => {
+    for (let k = Math.min(Math.max(...markers.map((m) => m.length)) - 1, s.length); k > 0; k--) {
+      const tail = s.slice(-k)
+      if (markers.some((m) => m.startsWith(tail))) return k
+    }
+    return 0
+  }
 
   const push = (chunk: string): string => {
     let s = carry + chunk
     carry = ''
     let spoken = ''
     while (s) {
-      const marker = inPanel ? CLOSE : OPEN
-      const at = s.indexOf(marker)
-      if (at >= 0) {
-        if (inPanel) panel += s.slice(0, at)
-        else spoken += s.slice(0, at)
-        s = s.slice(at + marker.length)
-        inPanel = !inPanel
-        continue
-      }
-      let keep = 0
-      for (let k = Math.min(marker.length - 1, s.length); k > 0; k--) {
-        if (marker.startsWith(s.slice(-k))) {
-          keep = k
-          break
+      if (inside) {
+        const close = `[[/${inside}]]`
+        const at = s.indexOf(close)
+        if (at >= 0) {
+          captured[inside] += s.slice(0, at)
+          s = s.slice(at + close.length)
+          inside = null
+          continue
         }
+        const keep = holdBack(s, [close])
+        captured[inside] += s.slice(0, s.length - keep)
+        carry = s.slice(s.length - keep)
+        s = ''
+      } else {
+        // The earliest opening marker of any block.
+        let at = -1
+        let which: Block | null = null
+        for (const b of BLOCKS) {
+          const i = s.indexOf(`[[${b}]]`)
+          if (i >= 0 && (at < 0 || i < at)) {
+            at = i
+            which = b
+          }
+        }
+        if (which) {
+          spoken += s.slice(0, at)
+          s = s.slice(at + which.length + 4)
+          inside = which
+          continue
+        }
+        const keep = holdBack(s, BLOCKS.map((b) => `[[${b}]]`))
+        spoken += s.slice(0, s.length - keep)
+        carry = s.slice(s.length - keep)
+        s = ''
       }
-      const body = s.slice(0, s.length - keep)
-      carry = s.slice(s.length - keep)
-      if (inPanel) panel += body
-      else spoken += body
-      s = ''
     }
     return spoken
   }
@@ -94,14 +119,20 @@ export function makePanelSplitter() {
   const end = (): string => {
     const rest = carry
     carry = ''
-    if (inPanel) {
-      panel += rest
+    if (inside) {
+      captured[inside] += rest
       return ''
     }
     return rest
   }
 
-  return { push, end, panel: () => panel.trim() }
+  return {
+    push,
+    end,
+    panel: () => captured.PANEL.trim(),
+    pdf: () => captured.PDF.trim(),
+    email: () => captured.EMAIL.trim(),
+  }
 }
 
 /** "Title\n- point\nIMAGES: query\n```js\ncode\n```" → a panel, plus the

@@ -18,6 +18,12 @@ export type ActionCard = {
   href?: string
   button?: string
   items?: string[]
+  /** Makes the button save the link as this file name (a made PDF). */
+  download?: string
+  /** A second button: another link, or something to run on the tap. */
+  extra?: { label: string; href?: string; onClick?: () => void }
+  /** Stays until closed, instead of clearing itself (a document or draft). */
+  keep?: boolean
 }
 
 export const useActionCard = create<{ card: ActionCard | null }>(() => ({ card: null }))
