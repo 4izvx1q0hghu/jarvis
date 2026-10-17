@@ -9,7 +9,7 @@ import type { AskHandlers, Msg } from './anthropic'
  * Anthropic's hosted web search.
  *
  * Free-tier limits are counted per model, so one model running out is not the
- * end of the day: answers walk down a ladder of free models (Flash-Lite, Flash,
+ * end of the day: answers walk down a ladder of free models (Flash, Flash-Lite,
  * then the open Gemma models, whose free allowance is far larger) and only give
  * up when every one of them is spent.
  */
@@ -18,8 +18,8 @@ const API = 'https://generativelanguage.googleapis.com/v1beta'
 
 /** Used when the key is not allowed to list models. */
 const FALLBACK_LADDER = [
-  'gemini-flash-lite-latest',
   'gemini-flash-latest',
+  'gemini-flash-lite-latest',
   'gemma-3-27b-it',
   'gemma-3-12b-it',
 ]
@@ -75,10 +75,13 @@ async function buildLadder(): Promise<string[]> {
       const size = (n: string) => Number(/-(\d+)b-/.exec(n)?.[1] ?? 0)
       const newest = (re: RegExp) =>
         names.filter((n) => re.test(n)).sort((a, b) => version(b) - version(a))
+      // Flash first: it thinks before answering, which is most of what makes
+      // her sound considered. Lite is the fallback once Flash's free allowance
+      // is spent, then Gemma.
       const list = [
-        ...['gemini-flash-lite-latest', 'gemini-flash-latest'].filter((n) => names.includes(n)),
-        ...newest(/^gemini-[\d.]+-flash-lite$/),
+        ...['gemini-flash-latest', 'gemini-flash-lite-latest'].filter((n) => names.includes(n)),
         ...newest(/^gemini-[\d.]+-flash$/),
+        ...newest(/^gemini-[\d.]+-flash-lite$/),
         ...names
           .filter((n) => /^gemma-[\d.]+-\d+b-it$/.test(n))
           .sort((a, b) => version(b) - version(a) || size(b) - size(a)),

@@ -8,6 +8,7 @@ import { ActionCard } from './ui/ActionCard'
 import { phoneAction, showCard } from './lib/actions'
 import { memoryAction } from './lib/memory'
 import { InfoPanel } from './ui/InfoPanel'
+import { WakeVoice } from './ui/WakeVoice'
 import {
   closeInfo,
   makePanelSplitter,
@@ -801,6 +802,7 @@ export default function App() {
       <Diagnostics />
       <ActionCard />
       <InfoPanel />
+      <WakeVoice />
       <Ignition onStart={() => void powerOn()} />
     </>
   )
