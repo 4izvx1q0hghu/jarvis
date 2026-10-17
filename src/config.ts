@@ -56,6 +56,8 @@ function flag(name: string, raw: unknown, fallback: boolean): boolean {
  */
 export const KEY_STORE = {
   anthropic: 'jarvis.anthropicKey',
+  gemini: 'jarvis.geminiKey',
+  geminiModel: 'jarvis.geminiModel',
   eleven: 'jarvis.elevenKey',
 } as const
 
@@ -67,16 +69,23 @@ function stored(name: string): string | undefined {
   }
 }
 
-export function saveKeys(anthropic: string, eleven: string): void {
-  localStorage.setItem(KEY_STORE.anthropic, anthropic.trim())
-  if (eleven.trim()) localStorage.setItem(KEY_STORE.eleven, eleven.trim())
-  else localStorage.removeItem(KEY_STORE.eleven)
+/** One brain key is kept at a time; saving one clears the other. */
+export function saveKeys(keys: {
+  anthropic?: string
+  gemini?: string
+  geminiModel?: string
+  eleven: string
+}): void {
+  forgetKeys()
+  if (keys.anthropic) localStorage.setItem(KEY_STORE.anthropic, keys.anthropic)
+  if (keys.gemini) localStorage.setItem(KEY_STORE.gemini, keys.gemini)
+  if (keys.geminiModel) localStorage.setItem(KEY_STORE.geminiModel, keys.geminiModel)
+  if (keys.eleven.trim()) localStorage.setItem(KEY_STORE.eleven, keys.eleven.trim())
 }
 
 export function forgetKeys(): void {
   try {
-    localStorage.removeItem(KEY_STORE.anthropic)
-    localStorage.removeItem(KEY_STORE.eleven)
+    for (const name of Object.values(KEY_STORE)) localStorage.removeItem(name)
   } catch {
     /* storage blocked — nothing was saved either */
   }
@@ -166,12 +175,27 @@ export const KOKORO_VOICE = choice(
 export const env = {
   anthropicKey:
     str(import.meta.env.VITE_ANTHROPIC_API_KEY) ?? stored(KEY_STORE.anthropic) ?? '',
+  geminiKey: str(import.meta.env.VITE_GEMINI_API_KEY) ?? stored(KEY_STORE.gemini) ?? '',
+  /** Chosen by the key gate from the models the key can use. */
+  geminiModel:
+    str(import.meta.env.VITE_GEMINI_MODEL) ??
+    stored(KEY_STORE.geminiModel) ??
+    'gemini-flash-latest',
   elevenKey:
     str(import.meta.env.VITE_ELEVENLABS_API_KEY) ?? stored(KEY_STORE.eleven) ?? '',
   elevenVoiceId:
-    str(import.meta.env.VITE_ELEVENLABS_VOICE_ID) ?? 'JBFqnCBsd6RMkjVDRZzb',
+    // Sarah — ElevenLabs' soft, young female premade voice.
+    str(import.meta.env.VITE_ELEVENLABS_VOICE_ID) ?? 'EXAVITQu4vr4xnJGR5Gz',
   porcupineKey: str(import.meta.env.VITE_PICOVOICE_ACCESS_KEY) ?? '',
 }
+
+/** Which API answers in direct mode: Claude when there is an Anthropic key,
+ *  otherwise Gemini's free tier when there is a Gemini key. */
+export const DIRECT_BRAIN: 'anthropic' | 'gemini' =
+  !env.anthropicKey && env.geminiKey ? 'gemini' : 'anthropic'
+
+/** Direct mode cannot start without a key for one of the two. */
+export const hasDirectKey = () => Boolean(env.anthropicKey || env.geminiKey)
 
 /** `claude-opus-5` is the strongest model; `claude-sonnet-5` trades a little
  *  quality for lower latency if you find responses feel slow on camera. */
@@ -314,7 +338,7 @@ export const activeServers = () => MCP_SERVERS.filter((s) => s.enabled && s.url)
  * fuller version in bridge/server.mjs — that's the one that gets used by
  * default, and the one worth editing.
  */
-export const SYSTEM_PROMPT = `You are JARVIS, Tony Stark's assistant. You are speaking out loud.
+export const SYSTEM_PROMPT = `You are DANYA, a personal voice assistant. If asked your name, you are Danya. You are speaking out loud.
 
 THE HARD RULE: your entire reply must be under 60 words. This is not a style
 preference — every word is read aloud by a speech synthesiser and the user is
@@ -323,7 +347,7 @@ good the content. If a question genuinely needs more, give the headline in two
 sentences and offer the detail: "There's more if you want it."
 
 Voice:
-- Dry, precise, quietly amused. Understated competence, never fawning.
+- Warm, gentle and calm, with a light touch of humour. Kind, never fawning.
 - Say "sir" at most once per exchange, and not in every exchange.
 - Plain spoken prose only. No markdown, no bullet points, no headings, no code,
   no emoji, no asterisks, no numbered lists.

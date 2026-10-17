@@ -1,5 +1,6 @@
-import { BACKEND } from '../config'
-import * as direct from './anthropic'
+import { BACKEND, DIRECT_BRAIN } from '../config'
+import * as anthropic from './anthropic'
+import * as gemini from './gemini'
 import * as bridge from './bridge'
 import type { AskHandlers, Msg } from './anthropic'
 import type { Blade, Panel } from '../store'
@@ -21,6 +22,9 @@ export type { ConnectionState } from './bridge'
  */
 
 export const usingBridge = BACKEND === 'bridge'
+
+/** The direct path's API: Claude, or Gemini's free tier (see config.ts). */
+const direct = DIRECT_BRAIN === 'gemini' ? gemini : anthropic
 
 /** Conversation state lives in the bridge session, so history is only threaded
  *  through on the direct path. */

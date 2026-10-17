@@ -7,10 +7,13 @@ import { env, MODEL, FAST_MODE, SYSTEM_PROMPT, activeServers } from '../config'
  * that this exposes the key to anyone who opens devtools, which is acceptable
  * for a local demo and not for a public deploy.
  */
-const client = new Anthropic({
-  apiKey: env.anthropicKey,
-  dangerouslyAllowBrowser: true,
-})
+// Built on first use, so a Gemini-only setup never constructs it keyless.
+let anthropic: Anthropic | null = null
+const api = () =>
+  (anthropic ??= new Anthropic({
+    apiKey: env.anthropicKey,
+    dangerouslyAllowBrowser: true,
+  }))
 
 export type Msg = Anthropic.Beta.BetaMessageParam
 
@@ -24,7 +27,7 @@ export type AskHandlers = {
 /** The stream for the turn in flight, so a barge-in can abort it. Without this
  *  cutting JARVIS off only silenced the speaker: the model kept generating,
  *  and kept billing, into a browser nobody was listening to. */
-let active: ReturnType<typeof client.beta.messages.stream> | null = null
+let active: ReturnType<Anthropic['beta']['messages']['stream']> | null = null
 let cancelled = false
 
 /**
@@ -93,7 +96,7 @@ export async function ask(
       // has to check for itself rather than opening another one.
       if (cancelled) return { text: text.trim(), tools: usedTools }
 
-      const stream = client.beta.messages.stream({ ...params, messages })
+      const stream = api().beta.messages.stream({ ...params, messages })
       active = stream
 
       stream.on('text', (delta) => {

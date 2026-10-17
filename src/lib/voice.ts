@@ -71,14 +71,15 @@ const WAKE_DEBOUNCE = 1500
  * correct, and during an answer "Jarvis" on its own is the natural way to cut
  * in. The negative lookahead keeps possessives ("Jarvis's job") from waking him.
  *
- * The alternates are not padding. "Jarvis" is not in a general dictation
- * model's high-frequency vocabulary, and Chrome routinely returns Travis,
- * Jervis, Jarvys or Java's for a perfectly clear utterance — every one of which
- * used to be silently discarded, so the wake word "just didn't work" with no
- * indication why. Better a rare false wake than a name that does not answer.
+ * The alternates are not padding. The assistant is called Danya, which is not
+ * in a general dictation model's high-frequency vocabulary, so recognisers
+ * return Dania, Dhanya, Donya, Tanya and the like for a perfectly clear
+ * utterance — every one of which would otherwise be silently discarded, so the
+ * wake word "just didn't work" with no indication why. Better a rare false wake
+ * than a name that does not answer.
  */
 const WAKE =
-  /\b(?:hey|hi|ok|okay|yo)?\s*(?:jarvis|jarvys|jervis|jarvis's|travis|jarviss|java's|jarv)\b(?!'s)/i
+  /\b(?:hey|hi|ok|okay|yo)?\s*(?:danya|dania|daniya|daniyah|dhanya|donya|dunya|denya|danja|tanya|tania)\b(?!'s)/i
 
 /** Everything after the wake phrase, which is usually the actual command. */
 function afterWake(text: string): string {
@@ -267,7 +268,7 @@ const norm = (s: string) =>
  * would be the single most infuriating failure this file could have.
  */
 const OVERRIDE =
-  /\b(stop|wait|jarvis|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no)\b/i
+  /\b(stop|wait|danya|dania|dhanya|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no)\b/i
 
 /**
  * Words too common to be evidence of anything.

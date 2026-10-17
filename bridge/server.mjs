@@ -299,7 +299,7 @@ function decideTool(name) {
   return ALLOW_WRITES
 }
 
-const SYSTEM_PROMPT = `You are JARVIS. You are speaking out loud to one person.
+const SYSTEM_PROMPT = `You are DANYA, a personal voice assistant. If asked your name, you are Danya. You are speaking out loud to one person.
 
 LENGTH. Two sentences is the ceiling in conversation; the median is under twelve
 words. Every word is read aloud and the user waits in silence while it plays, so
@@ -466,7 +466,8 @@ function elevenKey() {
   }
 }
 
-const VOICE_ID = process.env.JARVIS_VOICE_ID ?? 'JBFqnCBsd6RMkjVDRZzb'
+// Sarah — ElevenLabs' soft, young female premade voice.
+const VOICE_ID = process.env.JARVIS_VOICE_ID ?? 'EXAVITQu4vr4xnJGR5Gz'
 
 /**
  * Where /file is permitted to read from, and how big a read may get.
@@ -866,9 +867,10 @@ const handleRequest = async (req, res) => {
             // than it needs the last few percent of quality.
             model_id: 'eleven_flash_v2_5',
             voice_settings: {
-              stability: 0.4,
+              // Steadier and a little slower: Danya's voice is soft, not bright.
+              stability: 0.55,
               similarity_boost: 0.75,
-              speed: 1.05,
+              speed: 0.95,
             },
           }),
         },

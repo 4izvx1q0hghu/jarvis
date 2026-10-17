@@ -165,40 +165,43 @@ const MAX_UNSPOKEN = 220
 const VOICE_PREF_KEY = 'jarvis.voice'
 
 /**
- * Rank installed voices by how close they are to the character: a British
- * male, low and level, not a novelty voice.
+ * Rank installed voices by how close they are to the character: Danya is a
+ * soft, warm female voice — calm and natural, not a novelty voice.
  *
- * The big win on macOS is the Enhanced/Premium variant of Daniel. The stock
- * "Daniel" is a compact voice from a decade ago and sounds it; the Enhanced
- * download is free (System Settings → Accessibility → Spoken Content → System
- * Voice → Manage Voices) and once installed it appears here automatically.
+ * On an iPhone the best of these are the Enhanced/Premium downloads (Settings →
+ * Accessibility → Spoken Content → Voices → English), which appear here
+ * automatically once installed. Ava is the most natural of Apple's set.
  */
 function score(v: SpeechSynthesisVoice): number {
   const n = v.name.toLowerCase()
   let s = 0
 
-  // The macOS British male, and the closest thing to the character available
-  // without leaving the machine.
-  if (n.startsWith('daniel')) s += 100
-  else if (n.includes('google uk english male')) s += 85
-  else if (/\b(oliver|arthur|jamie|malcolm)\b/.test(n)) s += 80
-  // Newer macOS en-GB male voices — casual, but serviceable.
-  else if (/\b(reed|rocko|eddy)\b/.test(n)) s += 40
+  // Apple (iPhone, Mac) — softest first.
+  if (/\bava\b/.test(n)) s += 100
+  else if (/\bserena\b/.test(n)) s += 95
+  else if (/\bzoe\b/.test(n)) s += 90
+  else if (/\bsamantha\b/.test(n)) s += 85
+  else if (/\bmoira\b/.test(n)) s += 80
+  else if (/\b(karen|allison|susan|kate|stephanie|martha|catherine|tessa)\b/.test(n)) s += 70
+  // Windows / Edge neural voices, then Chrome and Android.
+  else if (/\b(aria|jenny|sonia|libby|emma|michelle)\b.*natural|natural.*\b(aria|jenny|sonia|libby|emma|michelle)\b/.test(n)) s += 95
+  else if (n.includes('google uk english female')) s += 85
+  else if (n === 'google us english') s += 75
+  else if (/\b(zira|hazel|susan|heera)\b/.test(n)) s += 50
 
   // Higher-quality variants of whatever matched above.
   if (n.includes('premium')) s += 30
-  else if (n.includes('enhanced')) s += 20
+  else if (n.includes('enhanced') || n.includes('natural')) s += 20
 
-  if (/en[-_]gb/i.test(v.lang)) s += 25
-  else if (/^en/i.test(v.lang)) s += 5
+  if (/^en/i.test(v.lang)) s += 5
 
-  // Voices that clearly aren't a butler.
+  // Voices that clearly aren't Danya.
   if (/grandma|grandpa|bubbles|jester|bells|boing|whisper|zarvox|superstar|trinoids|wobble|bahh|organ|cellos|bad news|good news/.test(n)) {
     s -= 200
   }
-  // Female-presenting names across the English sets.
-  if (/\b(flo|sandy|shelley|kate|serena|fiona|moira|karen|tessa|samantha|zoe|allison|ava|susan)\b/.test(n)) {
-    s -= 60
+  // Male-presenting names across the English sets.
+  if (/\b(daniel|oliver|arthur|jamie|malcolm|reed|rocko|eddy|alex|fred|tom|aaron|rishi|david|guy|mark|ryan|george|male)\b/.test(n)) {
+    s -= 100
   }
 
   return s
@@ -477,15 +480,11 @@ export function createSpeaker(): Speaker {
       const u = new SpeechSynthesisUtterance(text)
       const voice = pickVoice()
       if (voice) u.voice = voice
-      u.lang = voice?.lang ?? 'en-GB'
-      // Deliberate, and deliberately invariant — the character's pace does not
-      // change with stakes, and that steadiness is most of the effect. This
-      // lands around 130 wpm, below the median for film dialogue.
-      u.rate = 0.92
-      // Mid-baritone, and *not* pushed lower for gravitas. The voice is
-      // clarity-weighted rather than chest-weighted; dropping it further reads
-      // as a film-trailer voiceover, which is the wrong character entirely.
-      u.pitch = 0.95
+      u.lang = voice?.lang ?? 'en-US'
+      // Unhurried and even — a soft voice is mostly a calm pace. Around 135 wpm.
+      u.rate = 0.95
+      // A touch above neutral reads as gentle; much higher turns cartoonish.
+      u.pitch = 1.05
 
       // speechSynthesis exposes no amplitude, so drive the reactor from a
       // synthetic envelope. It only has to look like speech, not match it.
@@ -767,9 +766,10 @@ async function fetchCloudAudio(text: string): Promise<string | null> {
             text,
             model_id: 'eleven_flash_v2_5',
             voice_settings: {
-              stability: 0.4,
+              // Steadier and a little slower: Danya's voice is soft, not bright.
+              stability: 0.55,
               similarity_boost: 0.75,
-              speed: 1.05,
+              speed: 0.95,
             },
           }),
         },
