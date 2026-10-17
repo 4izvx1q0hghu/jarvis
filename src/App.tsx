@@ -9,6 +9,7 @@ import { phoneAction, showCard } from './lib/actions'
 import { memoryAction } from './lib/memory'
 import { InfoPanel } from './ui/InfoPanel'
 import { WakeVoice } from './ui/WakeVoice'
+import { TapToHear } from './ui/TapToHear'
 import {
   closeInfo,
   makePanelSplitter,
@@ -803,6 +804,7 @@ export default function App() {
       <ActionCard />
       <InfoPanel />
       <WakeVoice />
+      <TapToHear />
       <Ignition onStart={() => void powerOn()} />
     </>
   )

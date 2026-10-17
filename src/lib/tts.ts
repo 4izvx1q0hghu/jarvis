@@ -111,6 +111,21 @@ let nativeBroken = false
  */
 const cloudVoiceAvailable = () => BACKEND === 'bridge' || Boolean(env.elevenKey)
 
+/**
+ * iOS only. Set once iOS has refused to speak a sentence with both the chosen
+ * and the default voice; cleared by the next tap (unlockSpeech). While set,
+ * sentences are not attempted — each attempt costs seconds of silence — and are
+ * handed to the "Tap to hear Danya" button instead (src/ui/TapToHear.tsx),
+ * which speaks them from the tap, the one path iOS always allows.
+ */
+let iosSpeechBlocked = false
+
+/** Fired on window with the unspoken sentence as `detail`. */
+export const SPEECH_BLOCKED_EVENT = 'danya-speech-blocked'
+
+const handToTap = (text: string) =>
+  window.dispatchEvent(new CustomEvent(SPEECH_BLOCKED_EVENT, { detail: text }))
+
 /** A tenth of a second of silence, to start a media element from a tap. */
 const SILENT_WAV =
   'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
@@ -132,6 +147,7 @@ let sharedAudio: HTMLAudioElement | null = null
  * with the next tap. Harmless everywhere else.
  */
 export function unlockSpeech(): void {
+  iosSpeechBlocked = false
   if (typeof speechSynthesis !== 'undefined') {
     try {
       // A real character: an all-whitespace utterance can sit in the iOS queue
@@ -563,6 +579,10 @@ export function createSpeaker(): Speaker {
         if (played || cancelled) return
       }
 
+      if (IOS && iosSpeechBlocked) {
+        handToTap(item.text)
+        return
+      }
       const spoke = await speakNative(item.text)
       if (spoke || cancelled) return
       // The chosen voice may be the problem rather than the engine: try the
@@ -576,6 +596,14 @@ export function createSpeaker(): Speaker {
           return
         }
         if (cancelled) return
+      }
+      // iOS refused this sentence outright. Hand it, and the rest of the answer,
+      // to a button the user can tap: speech started from a tap always plays.
+      if (IOS) {
+        iosSpeechBlocked = true
+        diag.lastError = diag.lastError || 'ios-blocked'
+        handToTap(item.text)
+        return
       }
       // Nowhere to rescue it to: keep the system voice for the next sentence
       // rather than latching over to a cloud voice that does not exist.
