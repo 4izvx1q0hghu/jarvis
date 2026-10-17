@@ -56,7 +56,8 @@ function Row({ k, v, bad }: { k: string; v: string; bad?: boolean }) {
 }
 
 export function Diagnostics() {
-  const [open, setOpen] = useState(false)
+  // `?debug` opens it on a phone, which has no D key to press.
+  const [open, setOpen] = useState(() => new URLSearchParams(location.search).has('debug'))
   const [, tick] = useState(0)
   const phase = useStore((s) => s.phase)
 
@@ -127,6 +128,39 @@ export function Diagnostics() {
       <Row k="failures" v={String(t.failures ?? 0)} bad={(t.failures ?? 0) > 0} />
       <Row k="cloud rescues" v={String(t.rescued ?? 0)} />
       <Row k="error" v={t.lastError || '—'} bad={Boolean(t.lastError)} />
+      <Row
+        k="engine state"
+        v={
+          typeof speechSynthesis === 'undefined'
+            ? 'missing'
+            : `speaking ${speechSynthesis.speaking} · pending ${speechSynthesis.pending} · voices ${speechSynthesis.getVoices().length}`
+        }
+      />
+
+      {/* A phone has no T key. Speak straight from the tap, bypassing the
+          speaker queue, so a result here isolates the OS voice itself. */}
+      <button
+        type="button"
+        className="diag-test"
+        onClick={() => {
+          speechSynthesis.cancel()
+          const u = new SpeechSynthesisUtterance('Voice test. If you can hear this, speech is working.')
+          u.onstart = () => {
+            ;(w.__ttsTest as unknown) = 'started'
+          }
+          u.onerror = (e) => {
+            ;(w.__ttsTest as unknown) = `error: ${(e as SpeechSynthesisErrorEvent).error}`
+          }
+          u.onend = () => {
+            if (w.__ttsTest === 'started') w.__ttsTest = 'spoke fully'
+          }
+          w.__ttsTest = 'sent…'
+          speechSynthesis.speak(u)
+        }}
+      >
+        Test voice
+      </button>
+      <Row k="test result" v={String(w.__ttsTest ?? '— not run')} />
     </div>
   )
 }
