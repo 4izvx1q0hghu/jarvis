@@ -38,13 +38,16 @@ type Part = {
 }
 
 /**
- * What to offer each model, most capable first: web search and Python code
- * execution together, then code alone, then nothing. Not every model takes
- * every combination, and search has its own free quota, so a refusal steps
- * down a rung rather than failing the answer; the rung that worked is
- * remembered per model.
+ * What to offer each model, most capable first: web search, reading web pages
+ * (url_context — any link in the question), and Python code execution
+ * together, then smaller sets, then nothing. Not every model takes every
+ * combination, and search has its own free quota, so a refusal steps down a
+ * rung rather than failing the answer; the rung that worked is remembered per
+ * model.
  */
 const TOOLSETS: Record<string, unknown>[][] = [
+  [{ google_search: {} }, { url_context: {} }, { code_execution: {} }],
+  [{ google_search: {} }, { url_context: {} }],
   [{ google_search: {} }, { code_execution: {} }],
   [{ code_execution: {} }],
   [],

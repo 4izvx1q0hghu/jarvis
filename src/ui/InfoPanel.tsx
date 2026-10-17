@@ -10,7 +10,7 @@ export function InfoPanel() {
   const panel = useInfoPanel((s) => s.panel)
   if (!panel) return null
 
-  const wide = Boolean(panel.chart || panel.images?.length)
+  const wide = Boolean(panel.chart || panel.images?.length || panel.gallery?.length)
 
   return (
     <div className="dp-wrap" role="region" aria-label={panel.title}>
@@ -35,6 +35,16 @@ export function InfoPanel() {
         )}
 
         {panel.image && <img className="dp-image" src={panel.image} alt={panel.title} />}
+
+        {panel.gallery && panel.gallery.length > 0 && (
+          <div className="dp-gallery">
+            {panel.gallery.map((img) => (
+              <a key={img.thumb} href={img.full} target="_blank" rel="noreferrer" title={img.title}>
+                <img src={img.thumb} alt={img.title} loading="lazy" />
+              </a>
+            ))}
+          </div>
+        )}
 
         {panel.lines.length > 0 && (
           <ul className="dp-points">
@@ -71,6 +81,9 @@ export function InfoPanel() {
           <a className="dp-source" href={panel.source} target="_blank" rel="noreferrer">
             Source: Wikipedia ↗
           </a>
+        )}
+        {panel.gallery && panel.gallery.length > 0 && (
+          <span className="dp-credit">Pictures: Wikimedia Commons · tap one to open it</span>
         )}
       </div>
     </div>

@@ -14,6 +14,7 @@ import { Toolbar } from './ui/Toolbar'
 import { isLookRequest, PHOTO_EVENT, useLook, type Photo } from './lib/photo'
 import {
   closeInfo,
+  imageRequest,
   makePanelSplitter,
   mergeInfo,
   parsePanel,
@@ -21,6 +22,7 @@ import {
   showInfo,
   useInfoPanel,
   wikiCard,
+  wikiImages,
 } from './lib/infoPanel'
 import { chartFor } from './lib/charts'
 import { useStore } from './store'
@@ -204,11 +206,28 @@ export default function App() {
     if (chart) {
       showInfo({ title: `${chart.label} · live chart`, lines: [], chart: { url: chart.url, label: chart.label } })
     }
-    const prompt = chart
-      ? `${said}\n\n[A live ${chart.label} chart (${chart.symbol}) is on the user's screen now.]`
-      : said
+    // A site said without https:// ("summarise bbc.com") becomes a full link,
+    // which is what lets the model's URL tool open and read it.
+    const sites = [...said.matchAll(/\b(?<!@)((?:[a-z0-9-]+\.)+(?:com|org|net|io|ai|co|lk|in|uk|my|edu|gov|news|app|dev|info|me|tv)(?:\/[^\s]*)?)\b/gi)]
+      .map((m) => m[1])
+      .filter((s) => !/^https?:\/\//i.test(s))
+    const prompt =
+      (chart ? `${said}\n\n[A live ${chart.label} chart (${chart.symbol}) is on the user's screen now.]` : said) +
+      (sites.length ? `\n\n[Links: ${sites.map((s) => `https://${s.replace(/^www\./i, 'www.')}`).join(' ')}]` : '')
 
-    const subject = usingBridge || chart ? null : pictureSubject(said)
+    // "Show me pictures of…", "what does … look like": a gallery from
+    // Wikimedia Commons, up as soon as it arrives. The model can ask for one
+    // too, with an IMAGES: line in its panel (handled after the answer).
+    const addGallery = (query: string) => {
+      void wikiImages(query).then((gallery) => {
+        if (!gallery.length || stale()) return
+        mergeInfo({ gallery }, query.replace(/^\w/, (c) => c.toUpperCase()))
+      })
+    }
+    const imagesFor = usingBridge || chart ? null : imageRequest(said)
+    if (imagesFor) addGallery(imagesFor)
+
+    const subject = usingBridge || chart || imagesFor ? null : pictureSubject(said)
     if (subject) {
       void wikiCard(subject).then((card) => {
         if (!card || stale()) return
@@ -302,6 +321,7 @@ export default function App() {
           image: current?.image ?? card?.image,
           source: current?.source ?? card?.source,
         })
+        if (panel.imageQuery && !imagesFor) addGallery(panel.imageQuery)
       }
 
       // The bridge keeps conversation state in its own session, so history is

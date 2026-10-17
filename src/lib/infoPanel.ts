@@ -24,8 +24,12 @@ export type InfoPanel = {
   images?: string[]
   /** A live market chart (TradingView embed URL). */
   chart?: { url: string; label: string }
+  /** Pictures from the web, shown as a gallery. */
+  gallery?: GalleryImage[]
   source?: string
 }
+
+export type GalleryImage = { thumb: string; full: string; title: string }
 
 /** Adds to the panel on screen, or starts one titled `title`. */
 export function mergeInfo(patch: Partial<InfoPanel>, title = 'Details'): void {
@@ -100,8 +104,9 @@ export function makePanelSplitter() {
   return { push, end, panel: () => panel.trim() }
 }
 
-/** "Title\n- point\n```js\ncode\n```" → a panel. */
-export function parsePanel(raw: string): InfoPanel | null {
+/** "Title\n- point\nIMAGES: query\n```js\ncode\n```" → a panel, plus the
+ *  picture search the model asked for, if any. */
+export function parsePanel(raw: string): (InfoPanel & { imageQuery?: string }) | null {
   if (!raw.trim()) return null
   let code: string | undefined
   const fence = /```[^\n]*\n([\s\S]*?)```/.exec(raw)
@@ -110,12 +115,65 @@ export function parsePanel(raw: string): InfoPanel | null {
     code = fence[1].replace(/\s+$/, '')
     rest = raw.replace(fence[0], '\n')
   }
+  let imageQuery: string | undefined
   const lines = rest
     .split('\n')
     .map((l) => l.trim().replace(/^(?:[-*•]|\d+[.)])\s+/, '').replace(/\*\*(.+?)\*\*/g, '$1'))
-    .filter(Boolean)
+    .filter((l) => {
+      const m = /^images?:\s*(.+)$/i.exec(l)
+      if (m) imageQuery = m[1].trim()
+      return Boolean(l) && !m
+    })
   const title = (lines.shift() ?? 'Details').replace(/^#+\s*/, '')
-  return { title, lines, code }
+  return { title, lines, code, imageQuery }
+}
+
+/** "Show me pictures of X", "what does X look like", "images of X". */
+export function imageRequest(said: string): string | null {
+  const text = said.trim().replace(/[.!?]+$/, '')
+  const m =
+    /\b(?:show me |find |get |give me )?(?:some |a few )?(?:pictures?|photos?|images?|pics?)\s+of\s+(.+)$/i.exec(text) ??
+    /\bwhat (?:does|do|did) (.+?) look like\b/i.exec(text) ??
+    /\bshow me (?:what )?(.+?) looks? like\b/i.exec(text)
+  return m ? m[1].replace(/^(?:a|an|the)\s+/i, '').trim() || null : null
+}
+
+/**
+ * Pictures from Wikimedia Commons: free, no key, CORS-enabled, and served from
+ * upload.wikimedia.org (already allowed by the page's CSP). Never throws.
+ */
+export async function wikiImages(query: string, count = 6): Promise<GalleryImage[]> {
+  try {
+    const params = new URLSearchParams({
+      action: 'query',
+      format: 'json',
+      origin: '*',
+      generator: 'search',
+      gsrsearch: `filetype:bitmap ${query}`,
+      gsrnamespace: '6',
+      gsrlimit: String(count * 2),
+      prop: 'imageinfo',
+      iiprop: 'url|mime',
+      iiurlwidth: '480',
+    })
+    const res = await fetch(`https://commons.wikimedia.org/w/api.php?${params}`, {
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return []
+    const pages = Object.values(
+      ((await res.json()) as {
+        query?: { pages?: Record<string, { title: string; index?: number; imageinfo?: { thumburl?: string; url?: string; mime?: string }[] }> }
+      }).query?.pages ?? {},
+    )
+    return pages
+      .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+      .map((p) => ({ info: p.imageinfo?.[0], title: p.title.replace(/^File:/, '').replace(/\.[a-z0-9]+$/i, '') }))
+      .filter((p) => p.info?.thumburl && /^image\/(jpeg|png|webp)/.test(p.info.mime ?? ''))
+      .slice(0, count)
+      .map((p) => ({ thumb: p.info!.thumburl!, full: p.info!.url ?? p.info!.thumburl!, title: p.title }))
+  } catch {
+    return []
+  }
 }
 
 /** The subject of a "who is / what is / tell me about / show me" question. */

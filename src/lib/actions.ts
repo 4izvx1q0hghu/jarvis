@@ -233,6 +233,28 @@ export function phoneAction(said: string): PhoneAction | null {
     }
   }
 
+  // -- open any website ------------------------------------------------------
+  if ((m = /^(?:open|go to|visit|launch|take me to|show me)\s+((?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/\S*)?)$/i.exec(text))) {
+    const site = m[1].replace(/^https?:\/\//i, '')
+    return {
+      say: `Tap the button to open ${site.replace(/^www\./i, '')}.`,
+      card: { title: site.replace(/^www\./i, ''), href: `https://${site}`, button: 'Open website' },
+    }
+  }
+
+  // -- Google search in the browser ----------------------------------------------
+  if ((m = /^(?:google|search google for|google search for|search on google for|open google and search(?: for)?)\s+(.+)$/i.exec(text))) {
+    const query = m[1]
+    return {
+      say: `Tap the button to search Google for ${query}.`,
+      card: {
+        title: `Google: ${query}`,
+        href: `https://www.google.com/search?q=${enc(query)}`,
+        button: 'Search Google',
+      },
+    }
+  }
+
   // -- open an app ----------------------------------------------------------
   if ((m = /^(?:open|launch|start|go to)(?: up)?(?: the)?\s+(.+?)(?: app)?$/i.exec(text))) {
     const app = APPS[m[1].toLowerCase()]
