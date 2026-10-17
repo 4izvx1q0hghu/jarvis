@@ -576,6 +576,33 @@ export default function App() {
     }
     pump()
 
+    // Start a turn without the wake word — Space on a keyboard, a tap on the
+    // background on a phone, which has no Space bar.
+    const talk = () => {
+      const phase = store.getState().phase
+      if (phase === 'offline') {
+        void powerOn()
+      } else if (phase === 'boot') {
+        /* ignore — the boot sequence owns the phase until it finishes */
+      } else if (
+        phase === 'thinking' ||
+        phase === 'tooling' ||
+        phase === 'speaking'
+      ) {
+        onSpeechStart()
+        listen(AWAIT_SPEECH_MS)
+      } else {
+        onWake('')
+      }
+    }
+
+    // Only taps on the 3D scene itself, so buttons and panels keep working.
+    const onTap = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse') return
+      if (!(e.target instanceof HTMLCanvasElement)) return
+      talk()
+    }
+
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
@@ -663,28 +690,15 @@ export default function App() {
       // a missed wake word doesn't cost a take.
       if (e.code !== 'Space' || e.repeat) return
       e.preventDefault()
-
-      const phase = store.getState().phase
-      if (phase === 'offline') {
-        void powerOn()
-      } else if (phase === 'boot') {
-        /* ignore — the boot sequence owns the phase until it finishes */
-      } else if (
-        phase === 'thinking' ||
-        phase === 'tooling' ||
-        phase === 'speaking'
-      ) {
-        onSpeechStart()
-        listen(AWAIT_SPEECH_MS)
-      } else {
-        onWake('')
-      }
+      talk()
     }
     window.addEventListener('keydown', onKey)
+    window.addEventListener('pointerdown', onTap)
 
     return () => {
       cancelAnimationFrame(raf)
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pointerdown', onTap)
       clearIdle()
       if (voicePoll.current) clearInterval(voicePoll.current)
       voice.current?.stop()

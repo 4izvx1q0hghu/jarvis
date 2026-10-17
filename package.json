@@ -10,6 +10,7 @@
   },
   "scripts": {
     "start": "node scripts/start.mjs",
+    "start:phone": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-phone.ps1",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",

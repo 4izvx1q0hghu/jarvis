@@ -47,6 +47,42 @@ function flag(name: string, raw: unknown, fallback: boolean): boolean {
 }
 
 /**
+ * Keys typed into the page itself (direct mode on a phone).
+ *
+ * A public deploy must not carry an API key in its bundle — anyone could read
+ * it out. So the key gate (src/ui/KeyGate.tsx) asks for them on the device and
+ * keeps them in that browser's localStorage only. A key set in .env.local still
+ * wins, so a local demo works exactly as before.
+ */
+export const KEY_STORE = {
+  anthropic: 'jarvis.anthropicKey',
+  eleven: 'jarvis.elevenKey',
+} as const
+
+function stored(name: string): string | undefined {
+  try {
+    return str(localStorage.getItem(name))
+  } catch {
+    return undefined
+  }
+}
+
+export function saveKeys(anthropic: string, eleven: string): void {
+  localStorage.setItem(KEY_STORE.anthropic, anthropic.trim())
+  if (eleven.trim()) localStorage.setItem(KEY_STORE.eleven, eleven.trim())
+  else localStorage.removeItem(KEY_STORE.eleven)
+}
+
+export function forgetKeys(): void {
+  try {
+    localStorage.removeItem(KEY_STORE.anthropic)
+    localStorage.removeItem(KEY_STORE.eleven)
+  } catch {
+    /* storage blocked — nothing was saved either */
+  }
+}
+
+/**
  * Which brain to use.
  *
  *   'bridge' — run `npm run bridge` alongside the app. Authenticates off your
@@ -85,11 +121,10 @@ export const BRIDGE_HTTP_URL = BRIDGE_WS_URL.replace(/^ws/, 'http')
  *   round trip plus generation, which is the difference between a conversation
  *   and a walkie-talkie. Turn it on when you want the voice more than the pace.
  */
-export const USE_ELEVENLABS = flag(
-  'VITE_USE_ELEVENLABS',
-  import.meta.env.VITE_USE_ELEVENLABS,
-  false,
-)
+export const USE_ELEVENLABS =
+  flag('VITE_USE_ELEVENLABS', import.meta.env.VITE_USE_ELEVENLABS, false) ||
+  // An ElevenLabs key typed into the key gate is a request for that voice.
+  (BACKEND === 'direct' && Boolean(stored(KEY_STORE.eleven)))
 
 /**
  * Speech engine.
@@ -129,8 +164,10 @@ export const KOKORO_VOICE = choice(
 )
 
 export const env = {
-  anthropicKey: str(import.meta.env.VITE_ANTHROPIC_API_KEY) ?? '',
-  elevenKey: str(import.meta.env.VITE_ELEVENLABS_API_KEY) ?? '',
+  anthropicKey:
+    str(import.meta.env.VITE_ANTHROPIC_API_KEY) ?? stored(KEY_STORE.anthropic) ?? '',
+  elevenKey:
+    str(import.meta.env.VITE_ELEVENLABS_API_KEY) ?? stored(KEY_STORE.eleven) ?? '',
   elevenVoiceId:
     str(import.meta.env.VITE_ELEVENLABS_VOICE_ID) ?? 'JBFqnCBsd6RMkjVDRZzb',
   porcupineKey: str(import.meta.env.VITE_PICOVOICE_ACCESS_KEY) ?? '',
@@ -143,9 +180,10 @@ export const MODEL = 'claude-opus-5'
 /**
  * Fast mode runs the same Opus 5 at up to 2.5x output speed. It is a research
  * preview on the Claude API and costs $10/$50 per Mtok instead of $5/$25.
- * For a recorded demo the snappiness is worth it; flip to false to save money.
+ * For a recorded demo the snappiness is worth it. Off unless VITE_FAST_MODE is
+ * set, because it doubles the bill and not every API account has the preview.
  */
-export const FAST_MODE = true
+export const FAST_MODE = flag('VITE_FAST_MODE', import.meta.env.VITE_FAST_MODE, false)
 
 /**
  * Wake-word engine.

@@ -37,7 +37,7 @@ import { holdCamera, releaseCamera } from './camera'
  * executable code, re-resolved every load, that we neither control nor can pin
  * against being changed underneath us.
  */
-const WASM_BASE = '/mediapipe'
+const WASM_BASE = `${import.meta.env.BASE_URL}mediapipe`
 
 /**
  * The weights stay remote, and that is a different call from the runtime above.

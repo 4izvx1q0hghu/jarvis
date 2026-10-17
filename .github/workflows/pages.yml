@@ -1,0 +1,51 @@
+# Builds JARVIS in direct mode and publishes it to GitHub Pages, so it runs on a
+# phone with no computer behind it. The build carries no API key: the page asks
+# for one on the device (src/ui/KeyGate.tsx) and keeps it there.
+#
+# One-time setup: repository Settings -> Pages -> Source: GitHub Actions.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Hand tracking's runtime, copied out of node_modules as scripts/start.mjs
+      # does locally. It is build output, so it is not in git.
+      - run: cp -r node_modules/@mediapipe/tasks-vision/wasm public/mediapipe
+      - run: npm run build
+        env:
+          VITE_BACKEND: direct
+          VITE_BASE: /${{ github.event.repository.name }}/
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

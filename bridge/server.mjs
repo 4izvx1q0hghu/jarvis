@@ -28,6 +28,15 @@ import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import { openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
 import { probeUrl, renderPage } from './page.mjs'
 
+// Bridge settings such as ELEVENLABS_API_KEY can live in .env.local beside the
+// Vite ones. Vite only hands VITE_-prefixed values to the browser, so a key here
+// stays on this machine. Anything already set in the shell wins.
+try {
+  process.loadEnvFile(new URL('../.env.local', import.meta.url))
+} catch {
+  /* no .env.local — every setting has a default */
+}
+
 const PORT = Number(process.env.JARVIS_BRIDGE_PORT ?? 8787)
 
 /**
