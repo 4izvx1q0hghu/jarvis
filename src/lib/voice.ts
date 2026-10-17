@@ -1,6 +1,6 @@
 import { BRIDGE_HTTP_URL } from '../config'
 import { getMic } from './audio'
-import { speakingNow, speakingSince } from './tts'
+import { IOS, SPEAKING_EVENT, speakingNow, speakingSince } from './tts'
 import { startVad, type Vad } from './vad'
 import { caps } from './capabilities'
 
@@ -618,6 +618,9 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
   let lastWake = 0
   let lastAlive = Date.now()
   let silenceTimer: ReturnType<typeof setTimeout> | null = null
+  /** iOS only: the recogniser is stood down while Danya speaks (see tts.ts). */
+  let held = false
+  let resumeTimer: ReturnType<typeof setTimeout> | null = null
 
   /** Same assembly rules as the premium path — a pause is not a full stop. */
   const assemble = makeAssembler({
@@ -757,7 +760,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
   }
 
   const spin = () => {
-    if (stopped || running) return
+    if (stopped || running || held) return
     rec = new Ctor()
     rec.continuous = true
     rec.interimResults = true
@@ -782,7 +785,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       diag.running = false
       touch()
       rec = null
-      if (!stopped) setTimeout(spin, 80)
+      if (!stopped && !held) setTimeout(spin, 80)
     }
     try {
       rec.start()
@@ -794,10 +797,39 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
 
   spin()
 
+  /**
+   * iOS will not let a page speak while its recogniser holds the microphone, so
+   * stand the recogniser down for the length of each answer and bring it back
+   * shortly after. Barge-in is lost on iPhone; an answer that is never heard is
+   * the worse trade. The short delay keeps it down across the gap between two
+   * sentences of the same answer.
+   */
+  const onSpeaking = (e: Event) => {
+    if (resumeTimer) clearTimeout(resumeTimer)
+    resumeTimer = null
+    if ((e as CustomEvent<boolean>).detail) {
+      if (held) return
+      held = true
+      clearSilence()
+      try {
+        rec?.abort()
+      } catch {
+        /* already gone */
+      }
+      return
+    }
+    resumeTimer = setTimeout(() => {
+      held = false
+      touch()
+      spin()
+    }, 700)
+  }
+  if (IOS) window.addEventListener(SPEAKING_EVENT, onSpeaking)
+
   // The heartbeat. If nothing has been heard from the engine for a while it has
   // gone quiet on us — tear it down and build a fresh one.
   const health = setInterval(() => {
-    if (stopped) return
+    if (stopped || held) return
     const idle = Date.now() - lastAlive
     diag.idleMs = idle
     if (idle < 15000) return
@@ -819,6 +851,8 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       stopped = true
       clearInterval(health)
       clearSilence()
+      if (resumeTimer) clearTimeout(resumeTimer)
+      window.removeEventListener(SPEAKING_EVENT, onSpeaking)
       assemble.cancel()
       diag.running = false
       try {

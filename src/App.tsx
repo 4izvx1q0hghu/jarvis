@@ -6,7 +6,7 @@ import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
 import { useStore } from './store'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
-import { createSpeaker, cycleVoice, currentVoiceName, unlockSpeech } from './lib/tts'
+import { createSpeaker, cycleVoice, currentVoiceName, unlockSpeech, IOS } from './lib/tts'
 import * as sfx from './lib/sfx'
 import * as music from './lib/music'
 import * as hands from './lib/hands'
@@ -201,9 +201,16 @@ export default function App() {
       if (stale()) return
       console.error(err)
       sfx.play('error')
-      store
-        .getState()
-        .setError(err instanceof Error ? err.message : 'Something went wrong.')
+      const message = err instanceof Error ? err.message : 'Something went wrong.'
+      store.getState().setError(message)
+      // Say it as well. A voice assistant whose only error is a line of small
+      // print looks exactly like one that is not working at all.
+      spk.say(
+        /limit|429/i.test(message)
+          ? "I've reached my free limit for now. Try again in a minute."
+          : "Sorry, I couldn't get an answer just now. Please try again.",
+      )
+      await spk.end().catch(() => {})
     } finally {
       if (!stale()) {
         speaker.current = null
@@ -502,8 +509,10 @@ export default function App() {
     // getUserMedia stream; speech recognition does not, and gets its own. So a
     // failure here costs the animation and nothing else — saying "voice input
     // is unavailable" was both alarming and untrue.
+    // Not on iOS: there the speech recogniser needs the microphone to itself,
+    // and a second capture stream both stops it hearing and mutes Danya.
     try {
-      await startAnalyser()
+      if (!IOS) await startAnalyser()
     } catch {
       console.warn(
         '[jarvis] no microphone stream — the reactor will not pulse with your ' +

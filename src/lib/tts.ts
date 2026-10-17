@@ -140,8 +140,29 @@ export function speakingSince(): number {
   return speaking ? speakingAt : 0
 }
 
+/**
+ * iPhone and iPad (iPadOS reports itself as a Mac, so also check for touch).
+ *
+ * Every browser there is WebKit, and WebKit will not speak while its speech
+ * recogniser holds the microphone: the answer arrives as text and never as
+ * sound. So on iOS the listener steps aside while Danya talks (voice.ts listens
+ * for SPEAKING_EVENT) and nothing else may open a second microphone stream.
+ */
+export const IOS =
+  typeof navigator !== 'undefined' &&
+  (/iP(hone|ad|od)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+
+/** Fired on window with `detail: true` as speech starts, `false` as it stops. */
+export const SPEAKING_EVENT = 'danya-speaking'
+
+/** When the last sentence finished, so a fresh answer can wait for the
+ *  recogniser to let go of the microphone first. */
+let speechEndedAt = 0
+
 function setSpeaking(text: string) {
   if (text) {
+    if (!speaking) window.dispatchEvent(new CustomEvent(SPEAKING_EVENT, { detail: true }))
     speaking = text
     speakingAt = Date.now()
     return
@@ -149,6 +170,8 @@ function setSpeaking(text: string) {
   if (speaking) {
     recent = speaking
     recentUntil = Date.now() + ECHO_TAIL_MS
+    speechEndedAt = Date.now()
+    window.dispatchEvent(new CustomEvent(SPEAKING_EVENT, { detail: false }))
   }
   speaking = ''
 }
@@ -457,7 +480,12 @@ export function createSpeaker(): Speaker {
 
   async function speakOne(item: Item): Promise<void> {
     if (cancelled) return
+    // On iOS the recogniser has been listening until now; give it a moment to
+    // release the microphone, or this first sentence is silently dropped.
+    // Sentences that follow straight on find it already released.
+    const fresh = IOS && Date.now() - speechEndedAt > 600
     setSpeaking(item.text)
+    if (fresh) await new Promise((r) => setTimeout(r, 300))
     try {
       const url = item.audio ? await item.audio : null
       if (cancelled) return
