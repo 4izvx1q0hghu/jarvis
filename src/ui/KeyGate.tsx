@@ -5,8 +5,8 @@ import { saveKeys } from '../config'
  * Asks for the API key on the device, before JARVIS boots.
  *
  * Only shown in direct mode with no key yet — i.e. the public GitHub Pages
- * build on a phone. Takes either a Google Gemini key (free tier, "AIza…") or an
- * Anthropic key ("sk-ant-…"), told apart by their prefix. The key goes into
+ * build on a phone. Takes either a Google Gemini key (free tier; "AQ.…" or the
+ * older "AIza…") or an Anthropic key ("sk-ant-…"). The key goes into
  * this browser's localStorage and nowhere else; the deploy itself carries none.
  * It is checked against its API once before it is saved, so a typo shows up
  * here rather than as JARVIS failing on the first question.
@@ -24,16 +24,16 @@ export default function KeyGate() {
     setBusy(true)
     setError('')
     try {
-      if (key.startsWith('AIza')) {
-        const model = await checkGemini(key)
-        saveKeys({ gemini: key, geminiModel: model, eleven })
-      } else if (key.startsWith('sk-ant-')) {
+      if (key.startsWith('sk-ant-')) {
         await checkAnthropic(key)
         saveKeys({ anthropic: key, eleven })
       } else {
-        throw new Error(
-          'That does not look like a Gemini key (AIza…) or an Anthropic key (sk-ant-…).',
-        )
+        // Anything else is taken as a Gemini key and Google decides. Google
+        // has more than one format — the older "AIza…" keys and the newer
+        // "AQ.…" auth keys AI Studio now creates — so a prefix check here
+        // only ever rejects keys that would have worked.
+        const model = await checkGemini(key)
+        saveKeys({ gemini: key, geminiModel: model, eleven })
       }
     } catch (err) {
       setError((err as Error).message)
@@ -61,7 +61,7 @@ export default function KeyGate() {
             autoCapitalize="off"
             autoCorrect="off"
             spellCheck={false}
-            placeholder="AIza... or sk-ant-..."
+            placeholder="AQ... / AIza... or sk-ant-..."
             value={brainKey}
             onChange={(e) => setBrainKey(e.target.value)}
           />
@@ -97,6 +97,19 @@ export default function KeyGate() {
   )
 }
 
+const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta'
+const FALLBACK_MODEL = 'gemini-flash-latest'
+
+/** Google's own reason for refusing, so a bad key says why. */
+async function googleReason(res: Response): Promise<string> {
+  try {
+    const msg = ((await res.json()) as { error?: { message?: string } }).error?.message
+    return msg ? ` (${msg})` : ''
+  } catch {
+    return ''
+  }
+}
+
 /**
  * Checks a Gemini key and picks the model to talk to: the "latest flash" alias
  * when the key can use it, otherwise the newest plain flash model on offer.
@@ -105,19 +118,18 @@ export default function KeyGate() {
 async function checkGemini(key: string): Promise<string> {
   let res: Response
   try {
-    res = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000',
-      { headers: { 'x-goog-api-key': key } },
-    )
+    res = await fetch(`${GEMINI_API}/models?pageSize=1000`, {
+      headers: { 'x-goog-api-key': key },
+    })
   } catch {
     throw new Error('Could not reach Google. Check your connection and try again.')
   }
-  if (res.status === 400 || res.status === 401 || res.status === 403) {
-    throw new Error('Google rejected that key. Check it and try again.')
+  if (res.status === 400 || res.status === 401) {
+    throw new Error(`Google rejected that key${await googleReason(res)}.`)
   }
-  if (!res.ok) {
-    throw new Error(`Could not check the key (Google answered ${res.status}). Try again.`)
-  }
+  // Not every key type may list models. Ask a real one-token question instead,
+  // which is the thing Danya actually needs the key to do.
+  if (!res.ok) return probeGemini(key)
 
   const { models = [] } = (await res.json()) as {
     models?: { name: string; supportedGenerationMethods?: string[] }[]
@@ -130,7 +142,26 @@ async function checkGemini(key: string): Promise<string> {
   const flash = names
     .filter((n) => /^gemini-[\d.]+-flash$/.test(n))
     .sort((a, b) => version(b) - version(a))
-  return flash[0] ?? names.find((n) => n.includes('flash')) ?? 'gemini-flash-latest'
+  return flash[0] ?? names.find((n) => n.includes('flash')) ?? FALLBACK_MODEL
+}
+
+async function probeGemini(key: string): Promise<string> {
+  let res: Response
+  try {
+    res = await fetch(`${GEMINI_API}/models/${FALLBACK_MODEL}:generateContent`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: 'Hi' }] }],
+        generationConfig: { maxOutputTokens: 1 },
+      }),
+    })
+  } catch {
+    throw new Error('Could not reach Google. Check your connection and try again.')
+  }
+  // Rate-limited still means the key itself is good.
+  if (res.ok || res.status === 429) return FALLBACK_MODEL
+  throw new Error(`Google rejected that key${await googleReason(res)}.`)
 }
 
 async function checkAnthropic(key: string): Promise<void> {

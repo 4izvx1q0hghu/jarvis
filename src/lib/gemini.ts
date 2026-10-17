@@ -4,7 +4,7 @@ import type { AskHandlers, Msg } from './anthropic'
 /**
  * The free brain: Google's Gemini API, called straight from the browser the
  * same way anthropic.ts calls Claude. Used in direct mode when the key gate was
- * given a Gemini key (they start with "AIza") — Google's free tier needs no
+ * given a Gemini key ("AQ.…", or the older "AIza…") — Google's free tier needs no
  * card, which the Anthropic API does. Google Search grounding stands in for
  * Anthropic's hosted web search.
  */
