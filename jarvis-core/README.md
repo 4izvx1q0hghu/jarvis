@@ -147,16 +147,27 @@ cp .env.example .env && nano .env
 python -m jarvis chat
 ```
 
-### The dashboard (and Danya's brain)
+### Danya's holographic interface + the dashboard
+Package Danya's interface (the glowing reactor screen) for the Python core
+once, from the repository root — this needs Node.js:
+```bash
+npm install
+npm run build:core
+```
+Then start the server:
 ```bash
 python -m jarvis serve
 ```
-It prints `http://127.0.0.1:8787/?token=…` — open that link. To use Danya's
-holographic interface as the face, run Danya locally in bridge mode (from the
-repository root: `npm install`, then `npm run dev` with `VITE_BRIDGE_URL`
-left at its default `ws://localhost:8787`). To reach it from your phone over
-HTTPS, use Tailscale (`tailscale serve 8787`) — never expose the port to the
-open internet.
+- `http://127.0.0.1:8787/` — **Danya's holographic interface**, now using this
+  Python brain (open it in Chrome or Edge so the microphone works).
+- `http://127.0.0.1:8787/dashboard?token=…` — the admin dashboard: memory
+  you can edit and delete, tasks, reminders, the audit log and approvals.
+  The full link with the token is printed at startup.
+
+Without `build:core`, the dashboard appears at `/` instead. To reach Danya
+from your phone over HTTPS, use Tailscale (`tailscale serve 8787`) and add
+your Tailscale address to `JARVIS_ALLOWED_ORIGINS` — never expose the port to
+the open internet.
 
 ### Voice ("Hey Jarvis")
 ```bash

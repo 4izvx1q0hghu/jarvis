@@ -8,7 +8,8 @@ import react from '@vitejs/plugin-react'
  * phone silently falls back to browser speech.
  */
 function bridgeCsp(bridgeUrl: string | undefined): Plugin {
-  const origin = bridgeUrl ? new URL(bridgeUrl.replace(/^ws/, 'http')).origin : null
+  // `auto` (the Python core serving this page) is same-origin: nothing to add.
+  const origin = bridgeUrl && /^wss?:\/\//.test(bridgeUrl) ? new URL(bridgeUrl.replace(/^ws/, 'http')).origin : null
   const local = 'http://127.0.0.1:8787'
   return {
     name: 'jarvis-bridge-csp',

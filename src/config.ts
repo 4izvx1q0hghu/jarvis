@@ -118,8 +118,14 @@ export const BACKEND: 'bridge' | 'direct' = choice(
  * `wss://` maps to `https://` on its own, which is why this is a prefix swap
  * rather than a hardcoded scheme.
  */
-export const BRIDGE_WS_URL = str(import.meta.env.VITE_BRIDGE_URL) ?? 'ws://localhost:8787'
-export const BRIDGE_HTTP_URL = BRIDGE_WS_URL.replace(/^ws/, 'http')
+const bridgeSetting = str(import.meta.env.VITE_BRIDGE_URL) ?? 'ws://localhost:8787'
+/** `auto`: the brain is the server this page came from — how the Python
+ *  Danya core serves this interface (npm run build:core). */
+const sameOrigin = bridgeSetting === 'auto'
+export const BRIDGE_WS_URL = sameOrigin
+  ? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`
+  : bridgeSetting
+export const BRIDGE_HTTP_URL = sameOrigin ? location.origin : BRIDGE_WS_URL.replace(/^ws/, 'http')
 
 /**
  * Speech output engine.

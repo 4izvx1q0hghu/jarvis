@@ -13,6 +13,7 @@
     "start:phone": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-phone.ps1",
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:core": "tsc -b && vite build --mode core --outDir jarvis-core/jarvis/ui --emptyOutDir",
     "lint": "oxlint",
     "preview": "vite preview",
     "bridge": "node bridge/server.mjs",

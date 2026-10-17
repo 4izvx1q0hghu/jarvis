@@ -8,7 +8,9 @@ WebSocket  /ws (also /)  — speaks the same protocol as Danya's Node bridge, so
           {"type":"error","message","ask"}
           plus {"type":"event",…} and {"type":"notify",…} for the dashboard
           (Danya ignores frame types it doesn't know).
-HTTP       /            the dashboard
+HTTP       /            Danya's holographic interface (after `npm run build:core`),
+                        otherwise the dashboard
+           /dashboard   the admin dashboard: memory, tasks, audit, approvals
            /health      Danya's capability probe
            /api/…       state, memory (view / edit / delete), audit, mute
 
@@ -29,12 +31,16 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from .agent import Session
 from .runtime import Runtime
 from .tools.web import get_weather
 
 WEB = Path(__file__).parent / "web"
+# Danya's holographic interface, built from the repository root with
+# `npm run build:core` (it lands here and is git-ignored).
+UI = Path(__file__).parent / "ui"
 
 
 def _local_origin(origin: str | None) -> bool:
@@ -95,9 +101,16 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
 
     # -- HTTP ---------------------------------------------------------------
 
-    @app.get("/")
+    @app.get("/dashboard")
     async def dashboard() -> FileResponse:
         return FileResponse(WEB / "index.html")
+
+    if not (UI / "index.html").is_file():
+        # Danya's holographic interface isn't built yet (npm run build:core):
+        # the dashboard stands in at the root.
+        @app.get("/")
+        async def root() -> FileResponse:
+            return FileResponse(WEB / "index.html")
 
     @app.get("/health")
     async def health() -> dict:
@@ -193,7 +206,7 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
                 send_soon({"type": "tool", "name": event["name"], "ask": ask})
 
         agent = rt.agent(on_event=on_event)
-        await ws.send_json({"type": "ready", "servers": ["jarvis-core", rt.status()["brain"]]})
+        await ws.send_json({"type": "ready", "servers": ["danya-core", rt.status()["brain"]]})
 
         try:
             while True:
@@ -222,4 +235,9 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
 
     app.add_api_websocket_route("/ws", socket)
     app.add_api_websocket_route("/", socket)
+
+    # Danya's holographic interface, when built. Mounted last so the API, the
+    # dashboard and the socket above all match first.
+    if (UI / "index.html").is_file():
+        app.mount("/", StaticFiles(directory=UI, html=True), name="danya")
     return app
