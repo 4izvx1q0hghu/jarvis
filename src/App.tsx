@@ -13,12 +13,14 @@ import { TapToHear } from './ui/TapToHear'
 import {
   closeInfo,
   makePanelSplitter,
+  mergeInfo,
   parsePanel,
   pictureSubject,
   showInfo,
   useInfoPanel,
   wikiCard,
 } from './lib/infoPanel'
+import { chartFor } from './lib/charts'
 import { useStore } from './store'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
 import { createSpeaker, cycleVoice, currentVoiceName, unlockSpeech, IOS } from './lib/tts'
@@ -185,7 +187,18 @@ export default function App() {
     // picture and summary alongside the answer. Free, and shown the moment it
     // arrives; a panel the model writes later keeps the picture.
     let wiki: Awaited<ReturnType<typeof wikiCard>> = null
-    const subject = usingBridge ? null : pictureSubject(said)
+
+    // "Bitcoin chart", "price of gold": a live chart goes up at once, and the
+    // model is told it is there so its analysis is about that market.
+    const chart = usingBridge ? null : chartFor(said)
+    if (chart) {
+      showInfo({ title: `${chart.label} · live chart`, lines: [], chart: { url: chart.url, label: chart.label } })
+    }
+    const prompt = chart
+      ? `${said}\n\n[A live ${chart.label} chart (${chart.symbol}) is on the user's screen now.]`
+      : said
+
+    const subject = usingBridge || chart ? null : pictureSubject(said)
     if (subject) {
       void wikiCard(subject).then((card) => {
         if (!card || stale()) return
@@ -212,7 +225,19 @@ export default function App() {
     }
 
     try {
-      const { text } = await ask(said, history.current, {
+      const { text } = await ask(prompt, history.current, {
+        // Code she ran, its output, and charts it drew: straight to the panel.
+        onArtifact: (a) => {
+          if (stale()) return
+          const current = useInfoPanel.getState().panel
+          if (a.code) {
+            mergeInfo({ code: current?.code ? `${current.code}\n\n${a.code}` : a.code, ran: true })
+          } else if (a.output !== undefined) {
+            mergeInfo({ output: current?.output ? `${current.output}\n${a.output}` : a.output })
+          } else if (a.image) {
+            mergeInfo({ images: [a.image] })
+          }
+        },
         onText: (raw) => {
           if (stale()) return
           const delta = splitter.push(raw)
@@ -254,8 +279,19 @@ export default function App() {
       speakDelta(splitter.end())
       const panel = parsePanel(splitter.panel())
       if (panel) {
+        // The model's title and points, over whatever is already up: the live
+        // chart, the picture, code it actually ran and that code's output.
         const card = wiki as Awaited<ReturnType<typeof wikiCard>>
-        showInfo(card ? { ...panel, image: card.image, source: card.source } : panel)
+        const current = useInfoPanel.getState().panel
+        showInfo({
+          ...current,
+          title: panel.title,
+          lines: panel.lines,
+          code: current?.code ?? panel.code,
+          ran: current?.code ? current.ran : false,
+          image: current?.image ?? card?.image,
+          source: current?.source ?? card?.source,
+        })
       }
 
       // The bridge keeps conversation state in its own session, so history is

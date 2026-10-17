@@ -15,8 +15,28 @@ export type InfoPanel = {
   title: string
   lines: string[]
   code?: string
+  /** True when the code was actually run (Gemini code execution). */
+  ran?: boolean
+  output?: string
+  /** A Wikipedia picture. */
   image?: string
+  /** Charts or images the model's code produced. */
+  images?: string[]
+  /** A live market chart (TradingView embed URL). */
+  chart?: { url: string; label: string }
   source?: string
+}
+
+/** Adds to the panel on screen, or starts one titled `title`. */
+export function mergeInfo(patch: Partial<InfoPanel>, title = 'Details'): void {
+  const current = useInfoPanel.getState().panel
+  const base: InfoPanel = current ?? { title, lines: [] }
+  showInfo({
+    ...base,
+    ...patch,
+    lines: patch.lines ?? base.lines,
+    images: patch.images ? [...(base.images ?? []), ...patch.images] : base.images,
+  })
 }
 
 export const useInfoPanel = create<{ panel: InfoPanel | null }>(() => ({ panel: null }))

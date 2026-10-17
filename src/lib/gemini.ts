@@ -6,7 +6,8 @@ import type { AskHandlers, Msg } from './anthropic'
  * same way anthropic.ts calls Claude. Used in direct mode when the key gate was
  * given a Gemini key ("AQ.…", or the older "AIza…") — Google's free tier needs no
  * card, which the Anthropic API does. Google Search grounding stands in for
- * Anthropic's hosted web search.
+ * Anthropic's hosted web search, and Gemini's code execution lets her run
+ * Python for real calculations, data work and charts.
  *
  * Free-tier limits are counted per model, so one model running out is not the
  * end of the day: answers walk down a ladder of free models (Flash, Flash-Lite,
@@ -28,7 +29,27 @@ const FALLBACK_LADDER = [
  *  recovered by then; a spent daily limit just costs one quick refusal. */
 const SPENT_MS = 60_000
 
-type Part = { text?: string; thought?: boolean }
+type Part = {
+  text?: string
+  thought?: boolean
+  executableCode?: { language?: string; code?: string }
+  codeExecutionResult?: { outcome?: string; output?: string }
+  inlineData?: { mimeType?: string; data?: string }
+}
+
+/**
+ * What to offer each model, most capable first: web search and Python code
+ * execution together, then code alone, then nothing. Not every model takes
+ * every combination, and search has its own free quota, so a refusal steps
+ * down a rung rather than failing the answer; the rung that worked is
+ * remembered per model.
+ */
+const TOOLSETS: Record<string, unknown>[][] = [
+  [{ google_search: {} }, { code_execution: {} }],
+  [{ code_execution: {} }],
+  [],
+]
+const workingToolset = new Map<string, number>()
 type Chunk = {
   candidates?: {
     content?: { parts?: Part[] }
@@ -48,8 +69,6 @@ let lastModel = ''
 let ladder: Promise<string[]> | null = null
 /** Model → when it may be tried again. */
 const spentUntil = new Map<string, number>()
-/** Models whose search quota is gone (or that cannot search) — asked without it. */
-const noSearch = new Set<string>()
 
 const isGemma = (model: string) => model.startsWith('gemma')
 
@@ -113,7 +132,7 @@ function toContents(history: Msg[], persona: string | null) {
   })
 }
 
-function request(model: string, history: Msg[], search: boolean, signal: AbortSignal) {
+function request(model: string, history: Msg[], tools: Record<string, unknown>[], signal: AbortSignal) {
   const gemma = isGemma(model)
   return fetch(`${API}/models/${model}:streamGenerateContent?alt=sse`, {
     method: 'POST',
@@ -125,7 +144,7 @@ function request(model: string, history: Msg[], search: boolean, signal: AbortSi
     body: JSON.stringify({
       ...(gemma ? {} : { systemInstruction: { parts: [{ text: persona() }] } }),
       contents: toContents(history, gemma ? persona() : null),
-      ...(search ? { tools: [{ google_search: {} }] } : {}),
+      ...(tools.length ? { tools } : {}),
       // Room for the model's own thinking as well as the short spoken answer;
       // on Gemini both count against this limit.
       generationConfig: { maxOutputTokens: 4096 },
@@ -155,18 +174,19 @@ async function firstAnswer(history: Msg[], signal: AbortSignal): Promise<Respons
 
   for (const model of models) {
     if ((spentUntil.get(model) ?? 0) > now) continue
-    // Search first where it is offered. Grounding has its own free quota, so a
-    // refusal is retried without it before the model counts as spent.
-    const tries = isGemma(model) || noSearch.has(model) ? [false] : [true, false]
-    for (const search of tries) {
+    // Gemma takes no tools; everything else starts from the rung that last
+    // worked for it (see TOOLSETS).
+    const first = isGemma(model) ? TOOLSETS.length - 1 : (workingToolset.get(model) ?? 0)
+    for (let rung = first; rung < TOOLSETS.length; rung++) {
       if (cancelled) throw new DOMException('cancelled', 'AbortError')
-      const res = await request(model, history, search, signal)
+      const res = await request(model, history, TOOLSETS[rung], signal)
       if (res.ok) {
-        if (!search && tries.length > 1) noSearch.add(model)
+        workingToolset.set(model, rung)
         lastModel = model
         return res
       }
-      if (search) continue
+      // A model missing outright is not something fewer tools will fix.
+      if (res.status !== 404 && rung < TOOLSETS.length - 1) continue
       if (res.status === 429 || res.status === 404) {
         spentUntil.set(model, Date.now() + SPENT_MS)
         if (res.status === 429) lastLimit = res
@@ -219,6 +239,23 @@ export async function ask(
           searched = true
         }
         for (const part of candidate?.content?.parts ?? []) {
+          // Code the model ran, what it printed, and any chart it drew go to
+          // the screen, never into the voice.
+          if (part.executableCode?.code) {
+            if (!tools.includes('code_execution')) tools.push('code_execution')
+            handlers.onArtifact?.({ code: part.executableCode.code })
+            continue
+          }
+          if (part.codeExecutionResult) {
+            handlers.onArtifact?.({ output: part.codeExecutionResult.output ?? '' })
+            continue
+          }
+          if (part.inlineData?.data && part.inlineData.mimeType?.startsWith('image/')) {
+            handlers.onArtifact?.({
+              image: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
+            })
+            continue
+          }
           if (part.thought || !part.text) continue
           text += part.text
           handlers.onText(part.text)

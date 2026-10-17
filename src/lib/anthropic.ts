@@ -17,11 +17,17 @@ const api = () =>
 
 export type Msg = Anthropic.Beta.BetaMessageParam
 
+/** Something the model made along the way that belongs on screen: code it ran,
+ *  that code's output, or an image (a chart it drew). */
+export type Artifact = { code?: string; output?: string; image?: string }
+
 export type AskHandlers = {
   /** Fires for each chunk of the spoken answer. */
   onText: (delta: string) => void
   /** Fires when Claude starts running a remote tool. */
   onTool: (name: string) => void
+  /** Fires for code run, its output, and images made during the answer. */
+  onArtifact?: (artifact: Artifact) => void
 }
 
 /** The stream for the turn in flight, so a barge-in can abort it. Without this

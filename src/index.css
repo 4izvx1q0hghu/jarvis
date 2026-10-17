@@ -1506,6 +1506,197 @@ kbd {
   backdrop-filter: blur(6px);
 }
 
+/* ---------------------------------------------------------------------------
+   Danya's detail panel (src/ui/InfoPanel.tsx): the screen half of an answer.
+   Frosted glass over the reactor, a soft cyan edge, and a short rise-in so it
+   arrives rather than appears.
+   --------------------------------------------------------------------------- */
+.dp-wrap {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 64px);
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: flex-end;
+  z-index: 55;
+  pointer-events: none;
+}
+
+.dp-card {
+  pointer-events: auto;
+  width: 100%;
+  max-width: 420px;
+  max-height: 62vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(95, 227, 255, 0.32);
+  background: linear-gradient(180deg, rgba(12, 34, 50, 0.86), rgba(3, 12, 20, 0.92));
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 24px rgba(95, 227, 255, 0.12),
+    0 24px 60px rgba(0, 0, 0, 0.55);
+  color: #dff7ff;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  animation: dp-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.dp-wide {
+  max-width: 560px;
+  max-height: 72vh;
+}
+
+@keyframes dp-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.dp-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #5fe3ff;
+  box-shadow: 0 0 10px #5fe3ff;
+  flex: none;
+}
+
+.dp-title {
+  flex: 1;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: #ffffff;
+}
+
+.dp-close {
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: #cfefff;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.dp-chart {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(95, 227, 255, 0.2);
+  height: 320px;
+  background: #061420;
+}
+
+.dp-chart iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+.dp-image {
+  width: 100%;
+  max-height: 260px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid rgba(95, 227, 255, 0.15);
+}
+
+.dp-plot {
+  object-fit: contain;
+  max-height: 340px;
+  background: #ffffff;
+}
+
+.dp-points {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.dp-points li {
+  position: relative;
+  padding-left: 16px;
+}
+
+.dp-points li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(95, 227, 255, 0.8);
+}
+
+.dp-block {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(95, 227, 255, 0.18);
+  background: #01080d;
+}
+
+.dp-block-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 12px;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: rgba(95, 227, 255, 0.85);
+  background: rgba(95, 227, 255, 0.07);
+  border-bottom: 1px solid rgba(95, 227, 255, 0.12);
+}
+
+.dp-ran {
+  color: #6dffa8;
+}
+
+.dp-code,
+.dp-output {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.dp-code {
+  color: #e6faff;
+}
+
+.dp-output {
+  color: #b9ffd5;
+}
+
+.dp-source {
+  color: #5fe3ff;
+  font-size: 13px;
+  text-decoration: none;
+}
+
 /* The one interactive thing in an otherwise click-through panel. */
 .diag-test {
   pointer-events: auto;
