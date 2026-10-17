@@ -1,0 +1,8 @@
+# Optional senses and security.
+-r requirements.txt
+opencv-python>=4.9   # camera (JARVIS_CAMERA=1)
+mss>=9.0             # screenshots (JARVIS_SCREEN=1)
+pillow>=10.0
+cryptography>=42     # memory encryption at rest (JARVIS_MEMORY_KEY)
+# Development
+pytest>=8.0

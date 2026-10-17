@@ -1,0 +1,9 @@
+# Hands-free voice: wake word, offline speech recognition, natural voice.
+-r requirements.txt
+numpy>=1.26
+sounddevice>=0.4
+openwakeword>=0.6
+faster-whisper>=1.0
+edge-tts>=6.1
+miniaudio>=1.59
+pyttsx3>=2.90
