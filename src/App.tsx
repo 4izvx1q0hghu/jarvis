@@ -8,6 +8,7 @@ import { ActionCard } from './ui/ActionCard'
 import { phoneAction, showCard } from './lib/actions'
 import { memoryAction } from './lib/memory'
 import { offerEmail, offerPdf, parseEmail } from './lib/documents'
+import { keepAwake } from './lib/awake'
 import { InfoPanel } from './ui/InfoPanel'
 import { WakeVoice } from './ui/WakeVoice'
 import { TapToHear } from './ui/TapToHear'
@@ -510,6 +511,8 @@ export default function App() {
     // AudioContext or speech synthesis without a user gesture. Speech first,
     // before any await: iOS only counts it while still inside the tap.
     unlockSpeech()
+    // Keep the phone from auto-locking, which would pause her, while she's open.
+    keepAwake()
     await sfx.unlockAudio()
     sfx.play('boot')
     // The score. Must be started from inside this click handler for the same
