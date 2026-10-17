@@ -1,6 +1,7 @@
 import { BRIDGE_HTTP_URL } from '../config'
 import { getMic } from './audio'
 import { IOS, MIC_RELEASED_EVENT, SPEAKING_EVENT, speakingNow, speakingSince } from './tts'
+import { isMuted, MUTE_EVENT } from './mute'
 import { startVad, type Vad } from './vad'
 import { caps } from './capabilities'
 
@@ -760,7 +761,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
   }
 
   const spin = () => {
-    if (stopped || running || held) return
+    if (stopped || running || held || isMuted()) return
     rec = new Ctor()
     rec.continuous = true
     rec.interimResults = true
@@ -787,7 +788,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       rec = null
       // Stood down for speech: the mic is free now, which tts.ts waits for.
       if (held) window.dispatchEvent(new Event(MIC_RELEASED_EVENT))
-      if (!stopped && !held) setTimeout(spin, 80)
+      if (!stopped && !held && !isMuted()) setTimeout(spin, 80)
     }
     try {
       rec.start()
@@ -834,10 +835,26 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
   }
   if (IOS) window.addEventListener(SPEAKING_EVENT, onSpeaking)
 
+  // The mute switch turns the recogniser off outright, and back on.
+  const onMute = (e: Event) => {
+    if ((e as CustomEvent<boolean>).detail) {
+      clearSilence()
+      try {
+        rec?.abort()
+      } catch {
+        /* already gone */
+      }
+    } else {
+      touch()
+      spin()
+    }
+  }
+  window.addEventListener(MUTE_EVENT, onMute)
+
   // The heartbeat. If nothing has been heard from the engine for a while it has
   // gone quiet on us — tear it down and build a fresh one.
   const health = setInterval(() => {
-    if (stopped || held) return
+    if (stopped || held || isMuted()) return
     const idle = Date.now() - lastAlive
     diag.idleMs = idle
     if (idle < 15000) return
@@ -861,6 +878,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       clearSilence()
       if (resumeTimer) clearTimeout(resumeTimer)
       window.removeEventListener(SPEAKING_EVENT, onSpeaking)
+      window.removeEventListener(MUTE_EVENT, onMute)
       assemble.cancel()
       diag.running = false
       try {

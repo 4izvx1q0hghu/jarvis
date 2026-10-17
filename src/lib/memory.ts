@@ -32,6 +32,23 @@ function save(m: Memory): void {
 
 export const userName = (): string | undefined => load().name
 
+/** For the memory manager: everything stored, to show and delete. */
+export const memorySnapshot = (): { name?: string; facts: string[] } => load()
+
+export function forgetFact(index: number): void {
+  const m = load()
+  m.facts = m.facts.filter((_, i) => i !== index)
+  save(m)
+}
+
+export function forgetName(): void {
+  const m = load()
+  delete m.name
+  save(m)
+}
+
+export const forgetEverything = (): void => save({ facts: [] })
+
 /** Appended to the persona so the model knows who it is talking to. */
 export function memoryBlock(): string {
   const m = load()

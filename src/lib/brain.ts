@@ -32,10 +32,19 @@ export async function ask(
   prompt: string,
   history: Msg[],
   handlers: AskHandlers,
+  /** A photo to look at with this question (base64 JPEG, no data: prefix). */
+  image?: string,
 ): Promise<{ text: string; tools: string[] }> {
-  return usingBridge
-    ? bridge.ask(prompt, handlers)
-    : direct.ask([...history, { role: 'user', content: prompt }], handlers)
+  if (usingBridge) return bridge.ask(prompt, handlers)
+  // The Anthropic block shape serves both brains: Claude reads it as is, and
+  // gemini.ts turns the image block into inlineData.
+  const content: Msg['content'] = image
+    ? [
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } },
+        { type: 'text', text: prompt },
+      ]
+    : prompt
+  return direct.ask([...history, { role: 'user', content }], handlers)
 }
 
 export async function warm(): Promise<void> {

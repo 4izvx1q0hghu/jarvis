@@ -10,6 +10,8 @@ import { memoryAction } from './lib/memory'
 import { InfoPanel } from './ui/InfoPanel'
 import { WakeVoice } from './ui/WakeVoice'
 import { TapToHear } from './ui/TapToHear'
+import { Toolbar } from './ui/Toolbar'
+import { isLookRequest, PHOTO_EVENT, useLook, type Photo } from './lib/photo'
 import {
   closeInfo,
   makePanelSplitter,
@@ -140,7 +142,7 @@ export default function App() {
 
   // -- one turn -------------------------------------------------------------
 
-  const respond = async (said: string): Promise<void> => {
+  const respond = async (said: string, image?: string): Promise<void> => {
     const mine = ++turn.current
     const stale = () => mine !== turn.current
 
@@ -164,7 +166,15 @@ export default function App() {
     // "open Instagram", …) are answered here on the device: instant, no model
     // call, and phone actions always sit behind a button to tap.
     const remembered = memoryAction(said)
-    const local = remembered ? { say: remembered, card: undefined } : phoneAction(said)
+    // "What am I looking at?" with no photo yet: iOS only opens the camera
+    // from a tap, so light up the camera button and ask for one.
+    const wantsLook = !image && !usingBridge && isLookRequest(said)
+    if (wantsLook) useLook.setState({ pending: said })
+    const local = remembered
+      ? { say: remembered, card: undefined }
+      : wantsLook
+        ? { say: 'Sure! Tap the camera button up top and take a photo, or pick a screenshot.', card: undefined }
+        : phoneAction(said)
     if (local) {
       if (local.card) showCard(local.card)
       s.pushTurn({ id: newId(), role: 'jarvis', text: local.say })
@@ -272,7 +282,7 @@ export default function App() {
             spk.say(forTool(name))
           }
         },
-      })
+      }, image)
 
       if (stale()) return
 
@@ -296,11 +306,13 @@ export default function App() {
 
       // The bridge keeps conversation state in its own session, so history is
       // only threaded through on the direct path.
+      // The photo itself is not kept — only that one was shown — so the
+      // history stays small enough to send with every question.
       if (!usingBridge) {
-        history.current.push({ role: 'user', content: said })
+        history.current.push({ role: 'user', content: image ? `[showed a photo] ${said}` : said })
         history.current.push({ role: 'assistant', content: text || '…' })
-        if (history.current.length > 16) {
-          history.current = history.current.slice(-16)
+        if (history.current.length > 30) {
+          history.current = history.current.slice(-30)
         }
       }
 
@@ -817,10 +829,20 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     window.addEventListener('pointerdown', onTap)
 
+    // A photo from the camera button: show it, and ask about it. respond()
+    // clears the panel synchronously first, so the photo goes up after it.
+    const onPhoto = (e: Event) => {
+      const photo = (e as CustomEvent<Photo>).detail
+      void respond(photo.question, photo.base64)
+      showInfo({ title: 'Your photo', lines: [], image: photo.dataUrl })
+    }
+    window.addEventListener(PHOTO_EVENT, onPhoto)
+
     return () => {
       cancelAnimationFrame(raf)
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('pointerdown', onTap)
+      window.removeEventListener(PHOTO_EVENT, onPhoto)
       clearIdle()
       if (voicePoll.current) clearInterval(voicePoll.current)
       voice.current?.stop()
@@ -841,6 +863,7 @@ export default function App() {
       <InfoPanel />
       <WakeVoice />
       <TapToHear />
+      <Toolbar />
       <Ignition onStart={() => void powerOn()} />
     </>
   )

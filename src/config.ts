@@ -6,6 +6,7 @@
  */
 
 import { memoryBlock } from './lib/memory'
+import { savedPlace } from './lib/weather'
 
 /**
  * Vite inlines a blank `.env` entry as an empty string, not as undefined, so
@@ -349,7 +350,25 @@ export const activeServers = () => MCP_SERVERS.filter((s) => s.enabled && s.url)
 /** The persona plus what she remembers about you (src/lib/memory.ts) — what
  *  the direct path sends as the system prompt, read fresh every turn so a new
  *  memory counts straight away. */
-export const persona = (): string => SYSTEM_PROMPT + memoryBlock()
+export const persona = (): string => {
+  // Models don't know today's date or where the user is unless told.
+  const now = new Date().toLocaleString('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const place = savedPlace()
+  return (
+    SYSTEM_PROMPT +
+    `\n\nRight now it is ${now} (${zone}).` +
+    (place ? ` The user is near ${place}.` : '') +
+    memoryBlock()
+  )
+}
 
 export const SYSTEM_PROMPT = `You are Danya. Talk like a real person — a close, warm friend who happens to know a lot — not like a robot, a butler or a movie AI. You are speaking out loud, and you also have a screen.
 
@@ -376,6 +395,11 @@ solve it. Think it through carefully step by step, check your working and your
 final answer before you give it, and never stop at "it depends" when you can
 work it out. For anything current (news, prices, scores, weather, recent
 events), search the web rather than relying on memory.
+
+You can see photos: when the user sends one (a camera shot or a screenshot),
+look carefully and answer about it — describe it, identify things, read and
+transcribe any text, explain a screenshot, solve a problem in it. Only describe
+what is actually in the photo, and never claim to see anything without one.
 
 You can run Python code. For any real calculation, data analysis, statistics,
 conversion or chart, write and run code instead of working it out in your head,

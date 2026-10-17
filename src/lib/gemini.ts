@@ -66,18 +66,68 @@ let cancelled = false
 let searched = false
 let lastModel = ''
 
-let ladder: Promise<string[]> | null = null
+/** Fast models for conversation, and the deep thinkers (Pro) for hard work. */
+type Ladder = { fast: string[]; deep: string[] }
+let ladder: Promise<Ladder> | null = null
 /** Model → when it may be tried again. */
 const spentUntil = new Map<string, number>()
 
 const isGemma = (model: string) => model.startsWith('gemma')
 
 /**
+ * Whether a question deserves the slower, smarter Pro model: solving,
+ * explaining, coding, planning, analysis, markets, maths, anything long — or
+ * the user asking her to "think hard". Small talk stays on Flash, where a
+ * reply comes back fast enough to feel like conversation.
+ */
+export function needsDeepThinking(text: string): boolean {
+  if (/\b(think (hard|deeply|carefully)|deep(ly)? think|take your time)\b/i.test(text)) return true
+  if (text.trim().split(/\s+/).length > 18) return true
+  return /\b(solve|calculate|calculation|explain|why does|why is|how (do|does|can|would|should) (i|you|we|it)|code|program|script|debug|bug|error|analy[sz]e|analysis|compare|plan|strategy|essay|letter|proof|prove|math|maths|equation|formula|percent|trading|trade|invest|stock|crypto|forex|business|marketing|step by step|summari[sz]e|review|design|homework|algorithm|translate|research)\b/i.test(
+    text,
+  )
+}
+
+/** The text of the newest user turn. */
+function lastUserText(history: Msg[]): string {
+  const last = [...history].reverse().find((m) => m.role === 'user')
+  if (!last) return ''
+  return typeof last.content === 'string'
+    ? last.content
+    : last.content.map((b) => (b as { text?: unknown }).text ?? '').join(' ')
+}
+
+/**
  * The free models this key can use, best first. Built once from the model list
  * so it keeps up with Google's renames; falls back to a fixed list if the key
  * may not list models.
  */
-async function buildLadder(): Promise<string[]> {
+async function buildLadder(): Promise<Ladder> {
+  const fast = await buildFastLadder()
+  let deep = ['gemini-pro-latest']
+  try {
+    const res = await fetch(`${API}/models?pageSize=1000`, {
+      headers: { 'x-goog-api-key': env.geminiKey },
+    })
+    if (res.ok) {
+      const { models = [] } = (await res.json()) as {
+        models?: { name: string; supportedGenerationMethods?: string[] }[]
+      }
+      const names = models
+        .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+        .map((m) => m.name.replace(/^models\//, ''))
+      const version = (n: string) => Number(/(\d+(?:\.\d+)?)/.exec(n)?.[1] ?? 0)
+      const pros = names.filter((n) => /^gemini-[\d.]+-pro$/.test(n)).sort((a, b) => version(b) - version(a))
+      const found = [...(names.includes('gemini-pro-latest') ? ['gemini-pro-latest'] : []), ...pros]
+      if (found.length) deep = found
+    }
+  } catch {
+    /* keep the alias */
+  }
+  return { fast, deep }
+}
+
+async function buildFastLadder(): Promise<string[]> {
   const first = env.geminiModel ? [env.geminiModel] : []
   try {
     const res = await fetch(`${API}/models?pageSize=1000`, {
@@ -123,11 +173,22 @@ function toContents(history: Msg[], persona: string | null) {
             .map((b) => (b as { text?: unknown }).text)
             .filter((t): t is string => typeof t === 'string')
             .join('')) || '…'
+    // A photo arrives in the Anthropic block shape (see brain.ts); Gemini takes
+    // the same bytes as inlineData.
+    const images =
+      typeof m.content === 'string'
+        ? []
+        : m.content.flatMap((b) => {
+            const src = (b as { type?: string; source?: { media_type?: string; data?: string } })
+            return src.type === 'image' && src.source?.data
+              ? [{ inlineData: { mimeType: src.source.media_type ?? 'image/jpeg', data: src.source.data } }]
+              : []
+          })
     return {
       role: m.role === 'assistant' ? 'model' : 'user',
       // Gemma takes no system instruction, so the persona rides at the front of
       // the first user turn instead.
-      parts: [{ text: i === 0 && persona ? `${persona}\n\n${text}` : text }],
+      parts: [...images, { text: i === 0 && persona ? `${persona}\n\n${text}` : text }],
     }
   })
 }
@@ -168,7 +229,10 @@ async function failure(res: Response): Promise<Error> {
  * request — is a real error and stops here.
  */
 async function firstAnswer(history: Msg[], signal: AbortSignal): Promise<Response> {
-  const models = await (ladder ??= buildLadder())
+  const { fast, deep } = await (ladder ??= buildLadder())
+  // Hard questions try Pro first; when its (small) free allowance is spent,
+  // Flash and the rest of the ladder carry on.
+  const models = needsDeepThinking(lastUserText(history)) ? [...new Set([...deep, ...fast])] : fast
   const now = Date.now()
   let lastLimit: Response | null = null
 
@@ -185,10 +249,14 @@ async function firstAnswer(history: Msg[], signal: AbortSignal): Promise<Respons
         lastModel = model
         return res
       }
-      // A model missing outright is not something fewer tools will fix.
-      if (res.status !== 404 && rung < TOOLSETS.length - 1) continue
-      if (res.status === 429 || res.status === 404) {
-        spentUntil.set(model, Date.now() + SPENT_MS)
+      // A model missing or not allowed for this key is not something fewer
+      // tools will fix.
+      const unavailable = res.status === 404 || res.status === 403
+      if (!unavailable && rung < TOOLSETS.length - 1) continue
+      if (res.status === 429 || unavailable) {
+        // A limit clears; a model this key cannot use will not, so stop
+        // spending a request on it for the rest of the day.
+        spentUntil.set(model, Date.now() + (unavailable ? 6 * 3_600_000 : SPENT_MS))
         if (res.status === 429) lastLimit = res
         break
       }
