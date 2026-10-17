@@ -4,6 +4,8 @@ import { Hud } from './ui/Hud'
 import { Boot } from './ui/Boot'
 import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
+import { ActionCard } from './ui/ActionCard'
+import { phoneAction, showCard } from './lib/actions'
 import { useStore } from './store'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
 import { createSpeaker, cycleVoice, currentVoiceName, unlockSpeech, IOS } from './lib/tts'
@@ -141,6 +143,23 @@ export default function App() {
     speaker.current = spk
     sfx.duck(true)
     music.duck(true)
+
+    // Phone actions ("call Ali", "open Instagram", …) are answered here on the
+    // device: instant, no model call, and always behind a button to tap.
+    const local = phoneAction(said)
+    if (local) {
+      if (local.card) showCard(local.card)
+      s.pushTurn({ id: newId(), role: 'jarvis', text: local.say })
+      s.setPhase('speaking')
+      spk.say(local.say)
+      await spk.end().catch(() => {})
+      if (stale()) return
+      speaker.current = null
+      sfx.duck(false)
+      music.duck(false)
+      listen(FOLLOW_UP_MS)
+      return
+    }
 
     const turnId = newId()
     let started = false
@@ -727,6 +746,7 @@ export default function App() {
       <Hud />
       <Boot />
       <Diagnostics />
+      <ActionCard />
       <Ignition onStart={() => void powerOn()} />
     </>
   )
