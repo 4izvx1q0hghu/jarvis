@@ -18,7 +18,7 @@ from .runtime import Runtime
 def chat(rt: Runtime) -> None:
     agent = rt.agent(on_event=_print_event)
     session = Session()
-    print(f"JARVIS ({getattr(rt.llm, 'name', '?')}). Type 'quit' to leave.\n")
+    print(f"Danya ({getattr(rt.llm, 'name', '?')}). Type 'quit' to leave.\n")
     while True:
         try:
             text = input("you › ").strip()
@@ -28,7 +28,7 @@ def chat(rt: Runtime) -> None:
         if text.lower() in ("quit", "exit", "q"):
             return
         if text:
-            print(f"jarvis › {agent.run(session, text)}\n")
+            print(f"danya › {agent.run(session, text)}\n")
 
 
 def _print_event(event: dict) -> None:
@@ -47,7 +47,7 @@ def serve(rt: Runtime) -> None:
     from .server import create_app
 
     s = rt.settings
-    print(f"\nJARVIS dashboard:  http://{s.host}:{s.port}/?token={s.auth_token}")
+    print(f"\nDanya dashboard:  http://{s.host}:{s.port}/?token={s.auth_token}")
     print("Keep that link private — the token is the key to your assistant.\n")
     uvicorn.run(create_app(rt), host=s.host, port=s.port, log_level="warning")
 

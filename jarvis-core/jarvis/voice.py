@@ -1,7 +1,8 @@
 """Hands-free voice: wake word → listen → think → speak → follow-up.
 
-  Wake word   openWakeWord (free, offline). "hey_jarvis" ships with it; set
-              JARVIS_WAKE_WORD to another built-in name or a custom .onnx model.
+  Wake word   openWakeWord (free, offline). "hey_jarvis" ships with it; for
+              "Hey Danya", train a custom model (see README) and point
+              JARVIS_WAKE_WORD at its .onnx file.
   Listening   your microphone at 16 kHz; an utterance ends after ~0.8 s of quiet.
   Speech→text faster-whisper (offline; "base.en" by default, JARVIS_WHISPER to change).
   Text→speech edge-tts neural voices (natural, needs internet), falling back to
@@ -170,7 +171,7 @@ class VoiceLoop:
     def _answer(self, text: str) -> None:
         print(f"you: {text}")
         reply = self.agent.run(self.session, text)
-        print(f"jarvis: {reply}")
+        print(f"danya: {reply}")
         # Speak in the background and keep listening, so the wake word can
         # interrupt.
         speaking = threading.Thread(target=self.speaker.say, args=(reply,), daemon=True)

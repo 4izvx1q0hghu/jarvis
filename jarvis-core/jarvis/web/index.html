@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>J.A.R.V.I.S.</title>
+<title>D.A.N.Y.A.</title>
 <style>
   :root {
     --bg: #02070c; --panel: rgba(8, 26, 38, 0.72); --edge: rgba(95, 227, 255, 0.28);
@@ -81,7 +81,7 @@
 </head>
 <body>
 <header>
-  <div class="brand">J.A.R.V.I.S.</div>
+  <div class="brand">D.A.N.Y.A.</div>
   <div class="pills">
     <span class="pill" id="p-conn">offline</span>
     <span class="pill" id="p-brain">brain —</span>
@@ -108,7 +108,7 @@
     <div class="chat" id="chat"></div>
     <div class="composer">
       <button id="mic" title="Talk (Chrome / Edge)">🎙</button>
-      <input id="input" placeholder="Talk to JARVIS…" autocomplete="off" />
+      <input id="input" placeholder="Talk to Danya…" autocomplete="off" />
       <button class="primary" id="send">Send</button>
       <button id="mute" title="Mute the microphone everywhere">Mute</button>
     </div>
@@ -130,7 +130,7 @@
 
 <div class="gate" id="gate"><div class="card" style="max-width:420px">
   <h2>ACCESS TOKEN</h2>
-  <p class="muted">Paste the token JARVIS printed when it started (or open the link it printed).</p>
+  <p class="muted">Paste the token Danya printed when she started (or open the link she printed).</p>
   <div class="composer"><input id="token-input" placeholder="token" /><button class="primary" id="token-save">Unlock</button></div>
 </div></div>
 
@@ -240,7 +240,7 @@
   $('approve').onclick = () => { $('confirm').classList.remove('show'); send('yes'); };
   $('deny').onclick = () => { $('confirm').classList.remove('show'); send('no'); };
   $('mute').onclick = async () => { const r = await api('/api/mute', { method: 'POST', body: JSON.stringify({ muted: !muted }) }); muted = r.muted; renderMute(); };
-  $('forget-all').onclick = async () => { if (confirm('Delete everything JARVIS remembers about you?')) { await api('/api/memories', { method: 'DELETE' }); refresh(); } };
+  $('forget-all').onclick = async () => { if (confirm('Delete everything Danya remembers about you?')) { await api('/api/memories', { method: 'DELETE' }); refresh(); } };
   $('memories').onclick = async (e) => {
     const del = e.target.dataset.del, edit = e.target.dataset.edit;
     if (del) { await api('/api/memories/' + del, { method: 'DELETE' }); refresh(); }

@@ -1,8 +1,10 @@
-# JARVIS core — a real, buildable JARVIS
+# Danya core — a real, buildable JARVIS
 
-A practical personal AI assistant that feels like JARVIS: it understands you,
-talks, plans multi-step tasks, uses tools on your computer and the internet,
-remembers what you approve, and always asks before anything consequential.
+Danya is a practical personal AI assistant that feels like JARVIS: she
+understands you, talks like a person, plans multi-step tasks, uses tools on
+your computer and the internet, remembers what you approve, and always asks
+before anything consequential. (The code package is still called `jarvis`,
+so the commands below say `python -m jarvis`.)
 
 This folder is the **brain and hands** (Python). The **face** is Danya, the
 holographic interface in the rest of this repository (also usable on an
@@ -164,6 +166,15 @@ python -m jarvis voice
 The first run downloads the wake-word and speech models. Say "Hey Jarvis",
 wait for `[voice] yes?`, then speak. Type `m` + Enter (or press Mute on the
 dashboard) to mute; nothing is listened to while muted.
+
+**Wake her with "Hey Danya" instead.** The free wake-word engine ships with
+"Hey Jarvis" but not "Hey Danya", and training your own takes about an hour,
+free, with no audio recording needed (it uses synthetic voices):
+1. Open openWakeWord's "automatic model training" Colab notebook (linked from
+   github.com/dscripka/openWakeWord under *Training New Models*).
+2. Set the target phrase to `hey danya` and run all cells (Runtime → Run all).
+3. Download the resulting `hey_danya.onnx` into this folder.
+4. In `.env`: `JARVIS_WAKE_WORD=hey_danya.onnx`, then restart `python -m jarvis voice`.
 
 ### Optional senses and encryption
 ```bash
