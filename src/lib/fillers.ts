@@ -1,51 +1,39 @@
+import { userName } from './memory'
+
 /**
  * Filler speech.
  *
  * A tool call can take ten seconds, and silence that long reads as a crash. So
- * JARVIS says something the instant work starts — then goes quiet until he has
+ * Danya says something the instant work starts — then goes quiet until she has
  * an answer. One acknowledgement, no progress chatter.
  *
- * The phrasing follows the character's actual grammar rather than generic
- * assistant-speak, which matters more than it sounds:
- *
- *   - Working lines are subjectless present participles: "Compiling.",
- *     "Cross-referencing." Not "I'm now checking" and never "let me".
- *   - There is no snap-to compliance formula. "Right away" and "At once" are
- *     not in his vocabulary; acknowledgement is deferential, not eager.
- *   - No filler words, no enthusiasm, no apology, no exclamation marks.
- *   - "Sir" fronted means urgency; final means routine. These are all routine,
- *     so it goes at the end, and only sometimes.
+ * She talks like a person, not a butler: everyday words, a little warmth, no
+ * "sir", no "at your service". Short enough not to delay the answer.
  */
 
 /** Said as soon as the first tool fires, before any answer exists. */
 const WORKING = [
-  'Working on it, sir.',
-  'Compiling.',
-  'Retrieving.',
-  'Accessing the archive.',
-  'Cross-referencing.',
-  'Running the query now.',
-  'Searching.',
-  'Under way.',
+  'One sec.',
+  'Hang on, let me check.',
+  'Let me look that up.',
+  'Okay, give me a moment.',
+  'Hmm, let me see.',
+  'Checking now.',
 ]
 
-/** Acknowledging an order where no tool is involved. */
-const ACKNOWLEDGE = [
-  'As you wish, sir.',
-  'Very good, sir.',
-  'Certainly.',
-  'Understood.',
-  'Consider it done.',
-  'Directly, sir.',
-]
+/** Acknowledging a request where no tool is involved. */
+const ACKNOWLEDGE = ['Sure.', 'Okay!', 'Got it.', 'On it.', 'Of course.', 'No problem.']
 
-/** Answering to his name, before the user has said what they want. */
+/** Answering to her name, before the user has said what they want. `{name}`
+ *  is filled in once she knows it, and the line is skipped until then. */
 const ATTENTION = [
-  'Yes, sir?',
-  'Sir?',
-  'At your service, sir.',
-  'Standing by.',
-  'Awake, sir.',
+  'Yes?',
+  'Hey! What’s up?',
+  'I’m here.',
+  'Mm-hmm?',
+  'Yeah?',
+  'Hey {name}!',
+  'Hi {name}, what can I do?',
 ]
 
 /**
@@ -65,7 +53,16 @@ function makePicker(pool: string[]) {
 
 export const working = makePicker(WORKING)
 export const acknowledge = makePicker(ACKNOWLEDGE)
-export const attention = makePicker(ATTENTION)
+const pickAttention = makePicker(ATTENTION)
+
+export function attention(): string {
+  const name = userName()
+  for (;;) {
+    const line = pickAttention()
+    if (!line.includes('{name}')) return line
+    if (name) return line.replace('{name}', name)
+  }
+}
 
 /**
  * Naming the task is warmer than a generic acknowledgement and shows the
@@ -129,7 +126,7 @@ const BY_TOOL: Rule[] = [
   {
     server: /elevenlabs|openai-tts/,
     tool: /speech|\bvoice\b|\btts\b|text_to_sound/,
-    lines: ['Synthesising.', 'Working on it, sir.'],
+    lines: ['Making it now.', 'One sec.'],
   },
   {
     server: /spotify|sonos/,
@@ -139,7 +136,7 @@ const BY_TOOL: Rule[] = [
   {
     server: /^home|homeassistant|\bhue\b|\bhass\b/,
     tool: /\blights?\b|thermostat|\bdimmer\b/,
-    lines: ['Adjusting it now.', 'Seeing to it, sir.'],
+    lines: ['Adjusting it now.', 'Doing it now.'],
   },
   {
     server: /github|linear|jira|sentry/,
@@ -158,7 +155,7 @@ const BY_TOOL: Rule[] = [
   {
     server: /\bexa\b|serper|serpapi|perplexity|tavily|brave/,
     tool: /search|\bweb\b|\bfetch\b|crawl|research/,
-    lines: ['Searching.', 'Consulting the record.'],
+    lines: ['Let me look that up.', 'Searching now.'],
   },
 ]
 

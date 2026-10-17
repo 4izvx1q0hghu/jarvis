@@ -1,4 +1,4 @@
-import { env, SYSTEM_PROMPT } from '../config'
+import { env, persona } from '../config'
 import type { AskHandlers, Msg } from './anthropic'
 
 /**
@@ -120,8 +120,8 @@ function request(model: string, history: Msg[], search: boolean, signal: AbortSi
       'x-goog-api-key': env.geminiKey,
     },
     body: JSON.stringify({
-      ...(gemma ? {} : { systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] } }),
-      contents: toContents(history, gemma ? SYSTEM_PROMPT : null),
+      ...(gemma ? {} : { systemInstruction: { parts: [{ text: persona() }] } }),
+      contents: toContents(history, gemma ? persona() : null),
       ...(search ? { tools: [{ google_search: {} }] } : {}),
       // Room for the model's own thinking as well as the short spoken answer;
       // on Gemini both count against this limit.

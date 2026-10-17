@@ -6,6 +6,7 @@ import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
 import { ActionCard } from './ui/ActionCard'
 import { phoneAction, showCard } from './lib/actions'
+import { memoryAction } from './lib/memory'
 import { InfoPanel } from './ui/InfoPanel'
 import {
   closeInfo,
@@ -155,9 +156,11 @@ export default function App() {
     sfx.duck(true)
     music.duck(true)
 
-    // Phone actions ("call Ali", "open Instagram", …) are answered here on the
-    // device: instant, no model call, and always behind a button to tap.
-    const local = phoneAction(said)
+    // Memory ("my name is…", "remember that…") and phone actions ("call Ali",
+    // "open Instagram", …) are answered here on the device: instant, no model
+    // call, and phone actions always sit behind a button to tap.
+    const remembered = memoryAction(said)
+    const local = remembered ? { say: remembered, card: undefined } : phoneAction(said)
     if (local) {
       if (local.card) showCard(local.card)
       s.pushTurn({ id: newId(), role: 'jarvis', text: local.say })

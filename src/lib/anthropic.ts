@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { env, MODEL, FAST_MODE, SYSTEM_PROMPT, activeServers } from '../config'
+import { env, MODEL, FAST_MODE, activeServers, persona } from '../config'
 
 /**
  * The Claude API supports CORS, so the browser can talk to it directly — no
@@ -63,7 +63,7 @@ export async function ask(
   const params = {
     model: MODEL,
     max_tokens: 4096,
-    system: SYSTEM_PROMPT,
+    system: persona(),
     betas,
     ...(FAST_MODE ? { speed: 'fast' as const } : {}),
     // Thinking stays on at low effort. Disabling it entirely on Opus 5 can make
