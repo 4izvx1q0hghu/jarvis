@@ -319,7 +319,16 @@ export function candidateVoices(): SpeechSynthesisVoice[] {
 
 let cachedVoice: SpeechSynthesisVoice | null | undefined
 
+/**
+ * Set once the chosen voice has been heard to say nothing while the default
+ * voice spoke. iOS lists voices it cannot actually use — an Enhanced download
+ * still in progress, or one Safari will not load — and selecting one fails with
+ * no error and no sound. From then on the default voice is used.
+ */
+let preferredVoiceFailed = false
+
 function pickVoice(): SpeechSynthesisVoice | null {
+  if (preferredVoiceFailed) return null
   if (cachedVoice !== undefined) return cachedVoice
   const all = speechSynthesis.getVoices()
   if (!all.length) return null // not loaded yet — try again next utterance
@@ -554,6 +563,18 @@ export function createSpeaker(): Speaker {
 
       const spoke = await speakNative(item.text)
       if (spoke || cancelled) return
+      // The chosen voice may be the problem rather than the engine: try the
+      // default voice once, and keep it if that one speaks.
+      if (!preferredVoiceFailed && pickVoice()) {
+        const chosen = pickVoice()?.name ?? ''
+        if (await speakNative(item.text, true)) {
+          preferredVoiceFailed = true
+          diag.voice = `default (${chosen} failed)`
+          console.warn(`[danya] voice "${chosen}" produced no sound — using the default voice`)
+          return
+        }
+        if (cancelled) return
+      }
       // Nowhere to rescue it to: keep the system voice for the next sentence
       // rather than latching over to a cloud voice that does not exist.
       if (!cloudVoiceAvailable()) return
@@ -579,7 +600,9 @@ export function createSpeaker(): Speaker {
     }
   }
 
-  const speakNative = (text: string) =>
+  /** `plain` speaks with the browser's default voice, exactly like the
+   *  diagnostics test button, to rule the chosen voice in or out. */
+  const speakNative = (text: string, plain = false) =>
     new Promise<boolean>((resolve) => {
       // Chrome's speechSynthesis wedges after cancel().
       //
@@ -595,13 +618,15 @@ export function createSpeaker(): Speaker {
       speechSynthesis.resume()
 
       const u = new SpeechSynthesisUtterance(text)
-      const voice = pickVoice()
+      const voice = plain ? null : pickVoice()
       if (voice) u.voice = voice
-      u.lang = voice?.lang ?? 'en-US'
-      // Unhurried and even — a soft voice is mostly a calm pace. Around 135 wpm.
-      u.rate = 0.95
-      // A touch above neutral reads as gentle; much higher turns cartoonish.
-      u.pitch = 1.05
+      if (!plain) {
+        u.lang = voice?.lang ?? 'en-US'
+        // Unhurried and even — a soft voice is mostly a calm pace. ~135 wpm.
+        u.rate = 0.95
+        // A touch above neutral reads as gentle; much higher turns cartoonish.
+        u.pitch = 1.05
+      }
 
       // speechSynthesis exposes no amplitude, so drive the reactor from a
       // synthetic envelope. It only has to look like speech, not match it.

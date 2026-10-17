@@ -6,6 +6,16 @@ import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
 import { ActionCard } from './ui/ActionCard'
 import { phoneAction, showCard } from './lib/actions'
+import { InfoPanel } from './ui/InfoPanel'
+import {
+  closeInfo,
+  makePanelSplitter,
+  parsePanel,
+  pictureSubject,
+  showInfo,
+  useInfoPanel,
+  wikiCard,
+} from './lib/infoPanel'
 import { useStore } from './store'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
 import { createSpeaker, cycleVoice, currentVoiceName, unlockSpeech, IOS } from './lib/tts'
@@ -138,6 +148,7 @@ export default function App() {
     s.setCaption('')
     s.pushTurn({ id: newId(), role: 'user', text: said })
     s.setPhase('thinking')
+    closeInfo()
 
     const spk = createSpeaker()
     speaker.current = spk
@@ -165,10 +176,42 @@ export default function App() {
     let started = false
     let filled = false
 
+    // "Who is…", "tell me about…", "show me a picture of…": fetch a Wikipedia
+    // picture and summary alongside the answer. Free, and shown the moment it
+    // arrives; a panel the model writes later keeps the picture.
+    let wiki: Awaited<ReturnType<typeof wikiCard>> = null
+    const subject = usingBridge ? null : pictureSubject(said)
+    if (subject) {
+      void wikiCard(subject).then((card) => {
+        if (!card || stale()) return
+        wiki = card
+        const current = useInfoPanel.getState().panel
+        showInfo(current ? { ...current, image: current.image ?? card.image, source: current.source ?? card.source } : card)
+      })
+    }
+
+    // The model's on-screen panel arrives inline between markers; this keeps it
+    // out of the voice and the transcript.
+    const splitter = makePanelSplitter()
+    const speakDelta = (delta: string) => {
+      if (!delta || stale()) return
+      if (!started) {
+        started = true
+        store.getState().setPhase('speaking')
+        store.getState().setActiveTool(null)
+        music.working(false)
+        store.getState().pushTurn({ id: turnId, role: 'jarvis', text: '' })
+      }
+      store.getState().appendToLastTurn(delta)
+      spk.push(delta)
+    }
+
     try {
       const { text } = await ask(said, history.current, {
-        onText: (delta) => {
+        onText: (raw) => {
           if (stale()) return
+          const delta = splitter.push(raw)
+          if (!delta) return
           if (!started) {
             started = true
             store.getState().setPhase('speaking')
@@ -202,6 +245,13 @@ export default function App() {
       })
 
       if (stale()) return
+
+      speakDelta(splitter.end())
+      const panel = parsePanel(splitter.panel())
+      if (panel) {
+        const card = wiki as Awaited<ReturnType<typeof wikiCard>>
+        showInfo(card ? { ...panel, image: card.image, source: card.source } : panel)
+      }
 
       // The bridge keeps conversation state in its own session, so history is
       // only threaded through on the direct path.
@@ -747,6 +797,7 @@ export default function App() {
       <Boot />
       <Diagnostics />
       <ActionCard />
+      <InfoPanel />
       <Ignition onStart={() => void powerOn()} />
     </>
   )
