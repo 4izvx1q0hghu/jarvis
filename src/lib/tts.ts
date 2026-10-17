@@ -103,6 +103,35 @@ if (typeof window !== 'undefined') {
  */
 let nativeBroken = false
 
+/**
+ * Whether there is anywhere to go when the system voice fails: the bridge's
+ * speech proxy, or an ElevenLabs key of our own. On the phone build with no
+ * ElevenLabs key there is not, and latching over would mean silence for the
+ * rest of the visit — so the system voice keeps getting tried instead.
+ */
+const cloudVoiceAvailable = () => BACKEND === 'bridge' || Boolean(env.elevenKey)
+
+let speechUnlocked = false
+
+/**
+ * iOS Safari only lets a page speak once speechSynthesis has been started from
+ * inside a user gesture; until then every speak() is silently dropped. Answers
+ * arrive long after the tap that asked for them, so speak one silent utterance
+ * synchronously in the tap itself (INITIALISE, or a tap to talk). Call it
+ * before any await in the handler. Harmless everywhere else.
+ */
+export function unlockSpeech(): void {
+  if (speechUnlocked || typeof speechSynthesis === 'undefined') return
+  speechUnlocked = true
+  try {
+    const u = new SpeechSynthesisUtterance(' ')
+    u.volume = 0
+    speechSynthesis.speak(u)
+  } catch {
+    speechUnlocked = false
+  }
+}
+
 let speakingAt = 0
 
 /** When the current sentence started, or 0 if nothing is being spoken. The
@@ -381,7 +410,7 @@ export function createSpeaker(): Speaker {
     // premium path automatic with no flag to set. It falls back to the browser
     // voice on any failure, so a student without a key still hears him speak.
     // `nativeBroken` latches on once the system voice has proved unusable.
-    if (USE_ELEVENLABS || caps().tts || nativeBroken) {
+    if (USE_ELEVENLABS || caps().tts || (nativeBroken && cloudVoiceAvailable())) {
       // Recorded at the moment the tier is chosen rather than only when the
       // native voice latches over. Without this the panel reported 'system'
       // for a session that had spoken every one of its sentences through
@@ -440,6 +469,9 @@ export function createSpeaker(): Speaker {
 
       const spoke = await speakNative(item.text)
       if (spoke || cancelled) return
+      // Nowhere to rescue it to: keep the system voice for the next sentence
+      // rather than latching over to a cloud voice that does not exist.
+      if (!cloudVoiceAvailable()) return
 
       // The OS voice produced no sound. That is not recoverable by retrying it,
       // so latch it off and rescue this sentence through the bridge's speech
