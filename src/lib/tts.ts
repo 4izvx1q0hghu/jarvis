@@ -544,8 +544,10 @@ export function createSpeaker(): Speaker {
     setSpeaking(item.text)
     if (released) {
       await released
+      // Only when something is genuinely stuck ahead of us — cancelling an
+      // idle engine outside a tap is itself a way to upset iOS.
       try {
-        speechSynthesis.cancel()
+        if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel()
       } catch {
         /* no engine */
       }
@@ -661,6 +663,8 @@ export function createSpeaker(): Speaker {
         resolve(started)
       }
 
+      const handedAt = Date.now()
+
       u.onstart = () => {
         started = true
         diag.started++
@@ -668,14 +672,25 @@ export function createSpeaker(): Speaker {
         if (watchdog) clearTimeout(watchdog)
         // Chrome stops speaking after roughly fifteen seconds unless the engine
         // is nudged. A pause/resume pair is the standard keepalive and is
-        // inaudible; without it long answers cut off mid-sentence.
-        keepalive = setInterval(() => {
-          if (done) return
-          speechSynthesis.pause()
-          speechSynthesis.resume()
-        }, 5000)
+        // inaudible; without it long answers cut off mid-sentence. Not on iOS,
+        // which does not need it and can stay paused after the pair.
+        if (!IOS) {
+          keepalive = setInterval(() => {
+            if (done) return
+            speechSynthesis.pause()
+            speechSynthesis.resume()
+          }, 5000)
+        }
       }
-      u.onend = finish
+      u.onend = () => {
+        // iOS does not always fire `start`. An utterance that took real time to
+        // end was spoken; counting it as silent would say it all over again.
+        if (!started && IOS && Date.now() - handedAt > 400) {
+          started = true
+          diag.started++
+        }
+        finish()
+      }
       // Swallowing this was a mistake. When the OS voice fails there is no
       // other signal at all — no exception, no silence you can detect from
       // code — so an unlogged onerror turns a broken voice into an unexplained
@@ -696,7 +711,27 @@ export function createSpeaker(): Speaker {
       // nothing else will ever tell us — no error fires. Un-wedge and try once
       // more; if that also goes nowhere, resolve rather than hang, because a
       // silent sentence is recoverable and a stuck queue is not.
-      watchdog = setTimeout(() => {
+      //
+      // Not on iOS. There, an answer follows the microphone, and switching the
+      // audio from recording back to the speaker takes a second or more — the
+      // 700ms un-wedge cancelled every sentence just before it would have
+      // played. Wait while the engine says it is busy, up to eight seconds, and
+      // never cancel; with nothing queued at all, give up and let the caller
+      // try the default voice.
+      if (IOS) {
+        const check = () => {
+          if (done || started) return
+          const busy = speechSynthesis.speaking || speechSynthesis.pending
+          if (busy && Date.now() - handedAt < 8000) {
+            watchdog = setTimeout(check, 1000)
+            return
+          }
+          diag.failures++
+          diag.lastError = diag.lastError || (busy ? 'ios-stuck' : 'ios-dropped')
+          finish()
+        }
+        watchdog = setTimeout(check, 2500)
+      } else watchdog = setTimeout(() => {
         if (done || started) return
         console.warn('[jarvis] speech did not start — un-wedging the engine')
         speechSynthesis.cancel()
