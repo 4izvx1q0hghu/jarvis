@@ -111,25 +111,68 @@ let nativeBroken = false
  */
 const cloudVoiceAvailable = () => BACKEND === 'bridge' || Boolean(env.elevenKey)
 
-let speechUnlocked = false
+/** A tenth of a second of silence, to start a media element from a tap. */
+const SILENT_WAV =
+  'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
+
+/**
+ * iOS only. One media element, started from a tap and reused for every cloud
+ * sentence after it: iOS refuses play() on a fresh element that a tap did not
+ * start, which turned every ElevenLabs answer into silence.
+ */
+let sharedAudio: HTMLAudioElement | null = null
 
 /**
  * iOS Safari only lets a page speak once speechSynthesis has been started from
- * inside a user gesture; until then every speak() is silently dropped. Answers
- * arrive long after the tap that asked for them, so speak one silent utterance
- * synchronously in the tap itself (INITIALISE, or a tap to talk). Call it
- * before any await in the handler. Harmless everywhere else.
+ * inside a user gesture, and only lets a media element play once a gesture has
+ * started it; until then both are silently dropped. Answers arrive long after
+ * the tap that asked for them, so prime both synchronously in the tap itself
+ * (INITIALISE, or a tap to talk), before any await in the handler. Run on every
+ * tap rather than once, so a voice that went quiet in the background comes back
+ * with the next tap. Harmless everywhere else.
  */
 export function unlockSpeech(): void {
-  if (speechUnlocked || typeof speechSynthesis === 'undefined') return
-  speechUnlocked = true
-  try {
-    const u = new SpeechSynthesisUtterance(' ')
-    u.volume = 0
-    speechSynthesis.speak(u)
-  } catch {
-    speechUnlocked = false
+  if (typeof speechSynthesis !== 'undefined') {
+    try {
+      // A real character: an all-whitespace utterance can sit in the iOS queue
+      // without ever ending, holding up every sentence behind it.
+      const u = new SpeechSynthesisUtterance('a')
+      u.volume = 0
+      u.rate = 10
+      speechSynthesis.speak(u)
+    } catch {
+      /* no speech engine — nothing to unlock */
+    }
   }
+  if (IOS) {
+    try {
+      sharedAudio ??= new Audio()
+      sharedAudio.src = SILENT_WAV
+      void sharedAudio
+        .play()
+        .then(() => sharedAudio?.pause())
+        .catch(() => {})
+    } catch {
+      /* media unavailable */
+    }
+  }
+}
+
+/** Fired on window once the iOS recogniser has actually let go of the mic. */
+export const MIC_RELEASED_EVENT = 'danya-mic-released'
+
+/** Resolves when the recogniser reports it has released the microphone, or
+ *  after a short cap so a recogniser that never says so cannot hold speech up. */
+function micReleased(): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(cap)
+      window.removeEventListener(MIC_RELEASED_EVENT, done)
+      resolve()
+    }
+    const cap = setTimeout(done, 1200)
+    window.addEventListener(MIC_RELEASED_EVENT, done)
+  })
 }
 
 let speakingAt = 0
@@ -480,19 +523,33 @@ export function createSpeaker(): Speaker {
 
   async function speakOne(item: Item): Promise<void> {
     if (cancelled) return
-    // On iOS the recogniser has been listening until now; give it a moment to
-    // release the microphone, or this first sentence is silently dropped.
-    // Sentences that follow straight on find it already released.
+    // On iOS the recogniser has been listening until now. Wait until it has
+    // actually released the microphone, or this first sentence is silently
+    // dropped; then clear anything stuck in the speech queue, which is what the
+    // diagnostics "Test voice" button does and why it speaks when answers did
+    // not. Sentences that follow straight on find both already done. The
+    // listener goes up before setSpeaking, which is what tells the recogniser
+    // to let go — it can answer synchronously.
     const fresh = IOS && Date.now() - speechEndedAt > 600
+    const released = fresh ? micReleased() : null
     setSpeaking(item.text)
-    if (fresh) await new Promise((r) => setTimeout(r, 300))
+    if (released) {
+      await released
+      try {
+        speechSynthesis.cancel()
+      } catch {
+        /* no engine */
+      }
+    }
     try {
       const url = item.audio ? await item.audio : null
       if (cancelled) return
       // A failed generation is not a failed turn — drop to the system voice.
+      // Nor is a cloud sentence the browser refused to play (iOS blocks media a
+      // tap did not start): say it with the system voice instead of skipping it.
       if (url) {
-        await playUrl(url, item.text)
-        return
+        const played = await playUrl(url, item.text)
+        if (played || cancelled) return
       }
 
       const spoke = await speakNative(item.text)
@@ -640,10 +697,17 @@ export function createSpeaker(): Speaker {
       speechSynthesis.speak(u)
     })
 
+  /** Resolves true only if sound actually started, so a refused play() can be
+   *  said with the system voice instead. */
   const playUrl = (url: string, text: string) =>
-    new Promise<void>((resolve) => {
-      const audio = new Audio(url)
+    new Promise<boolean>((resolve) => {
+      // iOS: reuse the element a tap started (see unlockSpeech); a new one
+      // would be refused.
+      const shared = IOS && sharedAudio ? sharedAudio : null
+      const audio = shared ?? new Audio()
+      audio.src = url
       currentAudio = audio
+      let started = false
       // The generated path is an engine speaking just as much as the OS voice
       // is, so it keeps the same books. `spoken` counts the hand-off, `started`
       // is only incremented once the element reports it is actually playing —
@@ -653,7 +717,9 @@ export function createSpeaker(): Speaker {
       diag.voice = diag.engine === 'kokoro' ? KOKORO_VOICE : 'ElevenLabs'
 
       let read: (() => number) | null = null
-      const ctx = outputContext()
+      // Not on iOS: routing the element through Web Audio puts it under the
+      // silent switch, and a reused element cannot be given a second source.
+      const ctx = IOS ? null : outputContext()
       if (ctx) {
         try {
           const analyser = ctx.createAnalyser()
@@ -687,12 +753,17 @@ export function createSpeaker(): Speaker {
         outLevel = 0.12
         URL.revokeObjectURL(url)
         if (currentAudio === audio) currentAudio = null
-        resolve()
+        if (shared) {
+          // The next sentence assigns its own; stale ones must not fire for it.
+          audio.onplaying = audio.onended = audio.onerror = audio.onpause = null
+        }
+        resolve(started)
       }
       // Sound is genuinely coming out. This is the cloud/neural counterpart of
       // SpeechSynthesisUtterance.onstart, and it is what makes the diagnostics
       // verdict — and the T self-test — tell the truth on the premium path.
       audio.onplaying = () => {
+        started = true
         diag.started++
         diag.lastError = ''
       }

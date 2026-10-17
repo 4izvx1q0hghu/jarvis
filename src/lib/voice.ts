@@ -1,6 +1,6 @@
 import { BRIDGE_HTTP_URL } from '../config'
 import { getMic } from './audio'
-import { IOS, SPEAKING_EVENT, speakingNow, speakingSince } from './tts'
+import { IOS, MIC_RELEASED_EVENT, SPEAKING_EVENT, speakingNow, speakingSince } from './tts'
 import { startVad, type Vad } from './vad'
 import { caps } from './capabilities'
 
@@ -785,6 +785,8 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       diag.running = false
       touch()
       rec = null
+      // Stood down for speech: the mic is free now, which tts.ts waits for.
+      if (held) window.dispatchEvent(new Event(MIC_RELEASED_EVENT))
       if (!stopped && !held) setTimeout(spin, 80)
     }
     try {
@@ -811,10 +813,16 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       if (held) return
       held = true
       clearSilence()
+      if (!rec) {
+        // Nothing holding the mic — say so at once rather than make the first
+        // sentence wait out the cap.
+        window.dispatchEvent(new Event(MIC_RELEASED_EVENT))
+        return
+      }
       try {
-        rec?.abort()
+        rec.abort()
       } catch {
-        /* already gone */
+        window.dispatchEvent(new Event(MIC_RELEASED_EVENT))
       }
       return
     }
