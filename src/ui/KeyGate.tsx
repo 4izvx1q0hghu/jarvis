@@ -124,11 +124,10 @@ async function checkGemini(key: string): Promise<string> {
   } catch {
     throw new Error('Could not reach Google. Check your connection and try again.')
   }
-  if (res.status === 400 || res.status === 401) {
-    throw new Error(`Google rejected that key${await googleReason(res)}.`)
-  }
-  // Not every key type may list models. Ask a real one-token question instead,
-  // which is the thing Danya actually needs the key to do.
+  // Not every key type is allowed to list models — the newer "AQ." auth keys
+  // may be refused here and still answer questions. So a refusal is settled by
+  // a real one-token question, the thing Danya actually needs the key to do;
+  // only that one failing rejects the key.
   if (!res.ok) return probeGemini(key)
 
   const { models = [] } = (await res.json()) as {
