@@ -54,8 +54,9 @@ export const showInfo = (panel: InfoPanel) => useInfoPanel.setState({ panel })
 export const closeInfo = () => useInfoPanel.setState({ panel: null })
 
 /** The blocks a reply may carry after its spoken part, none of them read aloud:
- *  the on-screen panel, a document to make into a PDF, an email draft. */
-const BLOCKS = ['PANEL', 'PDF', 'EMAIL'] as const
+ *  the on-screen panel, a document to make into a PDF, an email draft, and
+ *  notes on what she learned about the user (never shown, only saved). */
+const BLOCKS = ['PANEL', 'PDF', 'EMAIL', 'MEMORY'] as const
 type Block = (typeof BLOCKS)[number]
 
 /**
@@ -66,7 +67,7 @@ type Block = (typeof BLOCKS)[number]
 export function makePanelSplitter() {
   let inside: Block | null = null
   let carry = ''
-  const captured: Record<Block, string> = { PANEL: '', PDF: '', EMAIL: '' }
+  const captured: Record<Block, string> = { PANEL: '', PDF: '', EMAIL: '', MEMORY: '' }
 
   /** The partial-marker tail of `s` worth holding back, given what could come next. */
   const holdBack = (s: string, markers: string[]): number => {
@@ -138,6 +139,7 @@ export function makePanelSplitter() {
     panel: () => captured.PANEL.trim(),
     pdf: () => captured.PDF.trim(),
     email: () => captured.EMAIL.trim(),
+    memory: () => captured.MEMORY.trim(),
   }
 }
 

@@ -6,7 +6,7 @@ import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
 import { ActionCard } from './ui/ActionCard'
 import { phoneAction, showCard } from './lib/actions'
-import { memoryAction } from './lib/memory'
+import { learnFrom, memoryAction } from './lib/memory'
 import { offerEmail, offerPdf, parseEmail } from './lib/documents'
 import { keepAwake } from './lib/awake'
 import { trackLocation } from './lib/weather'
@@ -356,6 +356,10 @@ export default function App() {
       const mail = parseEmail(splitter.email())
       if (doc) void offerPdf(doc, mail)
       else if (mail) offerEmail(mail)
+
+      // What she noticed worth remembering about the user. Never from pasted
+      // text (a message checked for scams is someone else's words).
+      if (exact === undefined) learnFrom(splitter.memory())
 
       // The bridge keeps conversation state in its own session, so history is
       // only threaded through on the direct path.

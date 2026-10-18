@@ -3,7 +3,7 @@ import { useStore } from '../store'
 import { setMuted, useMuted } from '../lib/mute'
 import { pickPhoto, useLook } from '../lib/photo'
 import { enableWeather, refreshWeather, useWeather, weatherIcon } from '../lib/weather'
-import { forgetEverything, forgetFact, forgetName, memorySnapshot } from '../lib/memory'
+import { forgetEverything, forgetFact, forgetName, KIND_LABEL, memorySnapshot, useLearned, type Kind } from '../lib/memory'
 import { unlockSpeech } from '../lib/tts'
 import { checkForScam, closeScan, openScan, useScan } from '../lib/scam'
 
@@ -89,6 +89,7 @@ export function Toolbar() {
         </button>
       </div>
       {muted && <div style={styles.mutedNote}>Microphone muted</div>}
+      {!muted && <LearnedNote onOpen={() => setMemoryOpen(true)} />}
       {memoryOpen && <MemoryPanel onClose={() => setMemoryOpen(false)} />}
       {scanOpen && <ScanPanel />}
     </>
@@ -155,10 +156,32 @@ function ScanPanel() {
   )
 }
 
+/** "🧠 Learned: Sara is a customer…" for a few seconds after she notes something. */
+function LearnedNote({ onOpen }: { onOpen: () => void }) {
+  const notes = useLearned((s) => s.notes)
+  useEffect(() => {
+    if (!notes.length) return
+    const t = setTimeout(() => useLearned.setState({ notes: [] }), 6000)
+    return () => clearTimeout(t)
+  }, [notes])
+  if (!notes.length) return null
+  const first = notes[0].replace(/^They\b/, 'You').replace(/^Their\b/, 'Your')
+  return (
+    <button type="button" style={styles.learned} onClick={onOpen}>
+      🧠 Learned: {first.length > 60 ? `${first.slice(0, 58)}…` : first}
+      {notes.length > 1 ? ` (+${notes.length - 1})` : ''}
+    </button>
+  )
+}
+
+const KIND_ICON: Record<Kind, string> = { store: '🏪', person: '👥', like: '❤️', other: '📌' }
+const you = (text: string) => text.replace(/^They\b/, 'You').replace(/^Their\b/, 'Your').replace(/^Them\b/, 'You')
+
 function MemoryPanel({ onClose }: { onClose: () => void }) {
   const [snapshot, setSnapshot] = useState(memorySnapshot)
   const refresh = () => setSnapshot(memorySnapshot())
   const empty = !snapshot.name && snapshot.facts.length === 0
+  const indexed = snapshot.facts.map((fact, i) => ({ fact, i }))
 
   return (
     <div className="dp-wrap" style={{ justifyContent: 'center' }}>
@@ -172,7 +195,7 @@ function MemoryPanel({ onClose }: { onClose: () => void }) {
         </div>
         {empty && (
           <p style={styles.hint}>
-            Nothing yet. Say “my name is …” or “remember that …” and it will show up here.
+            Nothing yet. Just talk to me: I pick up your store, the people you mention and what you like as we go.
           </p>
         )}
         {snapshot.name && (
@@ -183,14 +206,25 @@ function MemoryPanel({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         )}
-        {snapshot.facts.map((fact, i) => (
-          <div key={`${i}-${fact}`} style={styles.memRow}>
-            <span style={{ flex: 1 }}>{fact.replace(/^They\b/, 'You').replace(/^Their\b/, 'Your')}</span>
-            <button type="button" style={styles.del} onClick={() => (forgetFact(i), refresh())}>
-              Delete
-            </button>
-          </div>
-        ))}
+        {(Object.keys(KIND_LABEL) as Kind[]).map((kind) => {
+          const group = indexed.filter(({ fact }) => fact.kind === kind)
+          if (!group.length) return null
+          return (
+            <div key={kind} style={styles.memGroup}>
+              <div style={styles.memHead}>
+                {KIND_ICON[kind]} {KIND_LABEL[kind]}
+              </div>
+              {group.map(({ fact, i }) => (
+                <div key={`${i}-${fact.text}`} style={styles.memRow}>
+                  <span style={{ flex: 1 }}>{you(fact.text)}</span>
+                  <button type="button" style={styles.del} onClick={() => (forgetFact(i), refresh())}>
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          )
+        })}
         {!empty && (
           <button
             type="button"
@@ -205,7 +239,10 @@ function MemoryPanel({ onClose }: { onClose: () => void }) {
             Forget everything
           </button>
         )}
-        <p style={styles.hint}>Stored only on this phone. Say “remember that …” to add more.</p>
+        <p style={styles.hint}>
+          Stored only on this phone. I never keep passwords, codes or card numbers. Delete anything you don’t want me
+          to know.
+        </p>
       </div>
     </div>
   )
@@ -272,6 +309,26 @@ const styles: Record<string, CSSProperties> = {
     fontFamily: 'system-ui, -apple-system, sans-serif',
   },
   memRow: { display: 'flex', gap: 10, alignItems: 'center', fontSize: 15 },
+  memGroup: { display: 'grid', gap: 8 },
+  memHead: { fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: cyan, opacity: 0.85 },
+  learned: {
+    ...glass,
+    position: 'fixed',
+    top: 'calc(env(safe-area-inset-top, 0px) + 166px)',
+    left: 16,
+    right: 16,
+    margin: '0 auto',
+    width: 'fit-content',
+    maxWidth: 'calc(100% - 32px)',
+    padding: '8px 14px',
+    borderRadius: 999,
+    fontSize: 13,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    zIndex: 50,
+    animation: 'dp-in 300ms ease-out',
+  },
   del: {
     border: '1px solid rgba(255,107,107,0.5)',
     background: 'transparent',
