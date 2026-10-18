@@ -11,6 +11,7 @@ import { offerEmail, offerPdf, parseEmail } from './lib/documents'
 import { keepAwake } from './lib/awake'
 import { savedPlace, trackLocation, welcome } from './lib/weather'
 import { nearbyNote, nearbyRequest } from './lib/places'
+import { googleCommand, googleContext, googleNeed, googleReady, googleReply, takePendingQuestion } from './lib/google'
 import { AUDIO_EVENT, spoken, voicePrompt, type VoiceNote } from './lib/voicenote'
 import { isScamRequest, openScan, SCAN_EVENT, scamPanel, scamPrompt, scanForScam } from './lib/scam'
 import { InfoPanel } from './ui/InfoPanel'
@@ -190,15 +191,22 @@ export default function App() {
     // "Is this a scam?" with nothing to check: open the paste box.
     const wantsScan = exact === undefined && !image && !usingBridge && isScamRequest(said)
     if (wantsScan) openScan()
+    // Gmail and Calendar: "connect Google", or a question that needs them while
+    // signed out, gets a Connect button; the question is asked again after.
+    const gCommand = exact === undefined && !usingBridge ? googleCommand(said) : null
+    const gNeed = exact === undefined && !usingBridge && !image && !gCommand ? googleNeed(said) : null
+    const gLocal = gCommand || (gNeed && !googleReady()) ? googleReply(gCommand, gNeed ? said : undefined) : null
     const local = remembered
       ? { say: remembered, card: undefined }
       : wantsLook
         ? { say: 'Sure! Tap the camera button up top and take a photo, or pick a screenshot.', card: undefined }
         : wantsScan
           ? { say: 'Sure. Paste the message, email or link in the box, then tap Check it.', card: undefined }
-          : exact === undefined
-            ? phoneAction(said)
-            : null
+          : gLocal
+            ? gLocal
+            : exact === undefined
+              ? phoneAction(said)
+              : null
     if (local) {
       if (local.card) showCard(local.card)
       s.pushTurn({ id: newId(), role: 'jarvis', text: local.say })
@@ -212,6 +220,11 @@ export default function App() {
       listen(FOLLOW_UP_MS)
       return
     }
+
+    // Signed in and the question needs Gmail or Calendar: read them first, so
+    // the answer is about the real inbox and the real week.
+    const googleNote = gNeed && googleReady() ? await googleContext(gNeed) : ''
+    if (stale()) return
 
     const turnId = newId()
     let started = false
@@ -253,6 +266,7 @@ export default function App() {
       exact ??
       (chart ? `${said}\n\n[A live ${chart.label} chart (${chart.symbol}) is on the user's screen now.]` : said) +
         (nearby ? `\n\n${nearbyNote(nearby, place)}` : '') +
+        (googleNote ? `\n\n${googleNote}` : '') +
         (sites.length ? `\n\n[Links: ${sites.map((s) => `https://${s.replace(/^www\./i, 'www.')}`).join(' ')}]` : '')
 
     // "Show me pictures of…", "what does … look like": a gallery from
@@ -743,6 +757,13 @@ export default function App() {
     })
 
     store.getState().setPhase('dormant')
+
+    // Back from Google's sign-in page: ask the question that sent them there.
+    const pending = takePendingQuestion()
+    if (pending) {
+      void respond(pending)
+      return
+    }
 
     // Online: say hello like JARVIS would — by name, with the time of day and
     // the weather where you are. Made here, so it is instant and costs nothing.

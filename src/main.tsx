@@ -3,10 +3,16 @@ import './index.css'
 import App from './App.tsx'
 import KeyGate from './ui/KeyGate.tsx'
 import { BACKEND, forgetKeys, hasDirectKey } from './config'
+import { captureGoogleReturn, disconnectGoogle } from './lib/google'
 
-// `?forget-keys` wipes the keys the key gate saved on this device.
+// Back from Google's sign-in page (or given a client ID): take the token.
+captureGoogleReturn()
+
+// `?forget-keys` wipes the keys the key gate saved on this device, and signs
+// out of Google here too.
 if (new URLSearchParams(location.search).has('forget-keys')) {
   forgetKeys()
+  disconnectGoogle()
   location.replace(location.pathname)
 }
 
