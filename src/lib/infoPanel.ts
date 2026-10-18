@@ -22,8 +22,9 @@ export type InfoPanel = {
   image?: string
   /** Charts or images the model's code produced. */
   images?: string[]
-  /** A live market chart (TradingView embed URL). */
-  chart?: { url: string; label: string }
+  /** A live market chart (TradingView embed URL), the symbol's TradingView
+   *  page, and whether the embed can show it at all. */
+  chart?: { url: string; label: string; link?: string; embeddable?: boolean }
   /** Pictures from the web, shown as a gallery, and what was searched. */
   gallery?: GalleryImage[]
   galleryQuery?: string
@@ -143,9 +144,9 @@ export function makePanelSplitter() {
   }
 }
 
-/** "Title\n- point\nIMAGES: query\n```js\ncode\n```" → a panel, plus the
- *  picture search the model asked for, if any. */
-export function parsePanel(raw: string): (InfoPanel & { imageQuery?: string }) | null {
+/** "Title\n- point\nIMAGES: query\nCHART: NASDAQ:AAPL\n```js\ncode\n```" → a
+ *  panel, plus the picture search and the chart the model asked for. */
+export function parsePanel(raw: string): (InfoPanel & { imageQuery?: string; chartSymbol?: string }) | null {
   if (!raw.trim()) return null
   let code: string | undefined
   const fence = /```[^\n]*\n([\s\S]*?)```/.exec(raw)
@@ -155,16 +156,19 @@ export function parsePanel(raw: string): (InfoPanel & { imageQuery?: string }) |
     rest = raw.replace(fence[0], '\n')
   }
   let imageQuery: string | undefined
+  let chartSymbol: string | undefined
   const lines = rest
     .split('\n')
     .map((l) => l.trim().replace(/^(?:[-*•]|\d+[.)])\s+/, '').replace(/\*\*(.+?)\*\*/g, '$1'))
     .filter((l) => {
       const m = /^images?:\s*(.+)$/i.exec(l)
       if (m) imageQuery = m[1].trim()
-      return Boolean(l) && !m
+      const c = /^chart:\s*([A-Z0-9_]+:[A-Z0-9._!&-]+|[A-Z0-9._-]{1,15})\s*$/i.exec(l)
+      if (c) chartSymbol = c[1].toUpperCase()
+      return Boolean(l) && !m && !c
     })
   const title = (lines.shift() ?? 'Details').replace(/^#+\s*/, '')
-  return { title, lines, code, imageQuery }
+  return { title, lines, code, imageQuery, chartSymbol }
 }
 
 /** "Show me pictures of X", "what does X look like", "images of X". Returns

@@ -32,7 +32,7 @@ import {
   wikiImages,
   type GalleryImage,
 } from './lib/infoPanel'
-import { chartFor } from './lib/charts'
+import { chartFor, symbolChart } from './lib/charts'
 import { useStore } from './store'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
 import { createSpeaker, cycleVoice, currentVoiceName, unlockSpeech, voiceCommand, IOS } from './lib/tts'
@@ -255,7 +255,11 @@ export default function App() {
 
     const chart = usingBridge || exact !== undefined || nearby ? null : chartFor(said)
     if (chart) {
-      showInfo({ title: `${chart.label} · live chart`, lines: [], chart: { url: chart.url, label: chart.label } })
+      showInfo({
+        title: `${chart.label} · live chart`,
+        lines: [],
+        chart: { url: chart.url, label: chart.label, link: chart.link, embeddable: chart.embeddable },
+      })
     }
     // A site said without https:// ("summarise bbc.com") becomes a full link,
     // which is what lets the model's URL tool open and read it.
@@ -383,6 +387,12 @@ export default function App() {
           source: current?.source ?? card?.source,
         })
         if (panel.imageQuery && !imagesFor) addGallery(panel.imageQuery)
+        // The model named a market ("CHART: MYX:MAYBANK", any exchange in the
+        // world): put its chart up, unless one is already showing.
+        if (panel.chartSymbol && !useInfoPanel.getState().panel?.chart) {
+          const c = symbolChart(panel.chartSymbol)
+          mergeInfo({ chart: { url: c.url, label: c.label, link: c.link, embeddable: c.embeddable } })
+        }
       }
 
       // A document she wrote becomes a PDF; an email she drafted opens in the

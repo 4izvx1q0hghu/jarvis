@@ -23,7 +23,7 @@ export function InfoPanel() {
           </button>
         </div>
 
-        {panel.chart && (
+        {panel.chart && panel.chart.embeddable !== false && (
           <div className="dp-chart">
             <iframe
               src={panel.chart.url}
@@ -32,6 +32,18 @@ export function InfoPanel() {
               allow="fullscreen"
             />
           </div>
+        )}
+        {panel.chart?.link && (
+          <a
+            className={panel.chart.embeddable === false ? 'dp-chart-link dp-chart-only' : 'dp-chart-link'}
+            href={panel.chart.link}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {panel.chart.embeddable === false
+              ? `📈 Open the ${panel.chart.label} chart on TradingView ↗`
+              : 'Full chart, news and financials on TradingView ↗'}
+          </a>
         )}
 
         {panel.image && (

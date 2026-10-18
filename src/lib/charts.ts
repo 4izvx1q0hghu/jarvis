@@ -46,7 +46,37 @@ const ASSETS: Record<string, { symbol: string; label: string }> = {
   netflix: { symbol: 'NASDAQ:NFLX', label: 'Netflix' },
 }
 
-export type Chart = { symbol: string; label: string; url: string }
+export type Chart = {
+  symbol: string
+  label: string
+  /** The embeddable chart. */
+  url: string
+  /** The symbol's page on TradingView itself: full chart, news, financials. */
+  link: string
+  /** False for exchanges TradingView will not show in embedded charts. */
+  embeddable: boolean
+}
+
+/**
+ * Exchanges whose data TradingView only shows on its own site: an embedded
+ * chart says "This symbol is only available on TradingView" (checked for
+ * Bursa Malaysia; India's NSE and BSE are licensed the same way). For these the
+ * panel offers the TradingView page instead of a dead chart.
+ */
+const SITE_ONLY = /^(MYX|FTSEMYX|NSE|BSE)$/i
+
+/** A chart for any TradingView symbol, "EXCHANGE:TICKER" or a bare ticker. */
+export function symbolChart(symbol: string, label?: string): Chart {
+  const clean = symbol.trim().toUpperCase()
+  const exchange = clean.includes(':') ? clean.split(':')[0] : ''
+  return {
+    symbol: clean,
+    label: label || clean.split(':').pop() || clean,
+    url: chartUrl(clean),
+    link: `https://www.tradingview.com/symbols/${encodeURIComponent(clean.replace(':', '-'))}/`,
+    embeddable: !SITE_ONLY.test(exchange),
+  }
+}
 
 const TRIGGER =
   /^(?:(?:show|open|pull up|give|get|bring up)\s+(?:me\s+)?)?(?:the\s+)?(?:(.+?)\s+(?:chart|graph|price|prices|candles?)(?:\s+(?:now|today|right now))?|(?:chart|graph|price|prices|candles?)\s+(?:of|for)\s+(.+?))$/i
@@ -63,7 +93,7 @@ export function chartFor(said: string): Chart | null {
   const asked = (m[1] ?? m[2] ?? '').trim().replace(/^(?:the|a)\s+/i, '').replace(/'s$/, '')
   if (!asked) return null
   const known = ASSETS[asked.toLowerCase()]
-  if (known) return { ...known, url: chartUrl(known.symbol) }
+  if (known) return symbolChart(known.symbol, known.label)
   // A ticker the recogniser wrote in capitals ("AAPL", "BTCUSDT"), or a
   // currency pair ("EUR USD", "gbp/jpy"). Ordinary words ("the new iPhone")
   // are not tickers, however short.
@@ -71,18 +101,18 @@ export function chartFor(said: string): Chart | null {
   const codes = /^(?:EUR|USD|GBP|JPY|AUD|CAD|CHF|NZD|BTC|ETH|USDT|XAU|XAG)$/
   if (pair && codes.test(pair[1].toUpperCase()) && codes.test(pair[2].toUpperCase())) {
     const symbol = `${pair[1]}${pair[2]}`.toUpperCase()
-    return { symbol, label: `${symbol.slice(0, 3)}/${symbol.slice(3)}`, url: chartUrl(symbol) }
+    return symbolChart(symbol, `${symbol.slice(0, 3)}/${symbol.slice(3)}`)
   }
-  if (/^[A-Z][A-Z0-9.:]{1,14}$/.test(asked)) {
-    return { symbol: asked, label: asked, url: chartUrl(asked) }
-  }
+  if (/^[A-Z][A-Z0-9.:]{1,14}$/.test(asked)) return symbolChart(asked)
   return null
 }
 
 export function chartUrl(symbol: string): string {
   const q = new URLSearchParams({
     symbol,
-    interval: '60',
+    // Daily candles: the view an analysis is about. The chart's own buttons
+    // switch to hours or minutes.
+    interval: 'D',
     theme: 'dark',
     style: '1',
     timezone: 'Etc/UTC',
