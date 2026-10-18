@@ -33,7 +33,7 @@ import {
 import { chartFor } from './lib/charts'
 import { useStore } from './store'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
-import { createSpeaker, cycleVoice, currentVoiceName, unlockSpeech, IOS } from './lib/tts'
+import { createSpeaker, cycleVoice, currentVoiceName, unlockSpeech, voiceCommand, IOS } from './lib/tts'
 import * as sfx from './lib/sfx'
 import * as music from './lib/music'
 import * as hands from './lib/hands'
@@ -180,7 +180,8 @@ export default function App() {
     // Memory ("my name is…", "remember that…") and phone actions ("call Ali",
     // "open Instagram", …) are answered here on the device: instant, no model
     // call, and phone actions always sit behind a button to tap.
-    const remembered = exact === undefined ? memoryAction(said) : null
+    const remembered = exact === undefined ? (memoryAction(said) ?? voiceCommand(said)) : null
+    if (remembered) store.getState().setVoice(currentVoiceName())
     // "What am I looking at?" with no photo yet: iOS only opens the camera
     // from a tap, so light up the camera button and ask for one.
     const wantsLook = exact === undefined && !image && !usingBridge && isLookRequest(said)

@@ -287,8 +287,11 @@ function score(v: SpeechSynthesisVoice): number {
   const n = v.name.toLowerCase()
   let s = 0
 
+  // Edge's Jenny (Microsoft's natural neural voice) first on a computer; no
+  // iPhone has her, so there Apple's Ava still comes first.
+  if (/\bjenny\b/.test(n) && n.includes('natural')) s += 110
   // Apple (iPhone, Mac) — softest first.
-  if (/\bava\b/.test(n)) s += 100
+  else if (/\bava\b/.test(n)) s += 100
   else if (/\bserena\b/.test(n)) s += 95
   else if (/\bzoe\b/.test(n)) s += 90
   else if (/\bsamantha\b/.test(n)) s += 85
@@ -385,6 +388,62 @@ export function cycleVoice(): string {
   localStorage.setItem(VOICE_PREF_KEY, next.name)
   cachedVoice = next
   return next.name
+}
+
+/** "Jenny" from "Microsoft Jenny Online (Natural) - English (United States)". */
+const shortName = (v: SpeechSynthesisVoice) =>
+  v.name.replace(/^(Microsoft|Google|Apple)\s+/i, '').replace(/\s*(Online|\(.*|-.*)$/i, '').trim() || v.name
+
+/**
+ * "Use Jenny's voice", "change your voice to Aria", "change your voice", "what
+ * voices do you have": answered here on the device, and the next thing she
+ * says is in the new voice. Returns what to say, or null if it isn't one.
+ */
+export function voiceCommand(said: string): string | null {
+  const text = said.trim().replace(/[.!?]+$/, '')
+  if (typeof speechSynthesis === 'undefined') return null
+  const engine = currentVoiceName()
+  const wantsList = /\b(what|which) voices\b|\blist (your |the )?voices\b/i.test(text)
+  const named =
+    /\b(?:use|switch to|change (?:your|the) voice to|speak (?:in|with|like)|talk (?:in|with|like)|sound like|bring(?: in| back)?)\s+(?:the\s+)?([a-z]+)(?:'s|s)?(?:\s+voice)?$/i.exec(text) ??
+    // "bring jennies voice", "I want Aria's voice" — only with a request in it,
+    // so "what does Morgan Freeman's voice sound like?" stays a question.
+    (/\b(use|bring|switch|change|want|give me|set|put on)\b/i.test(text) ? /\b([a-z]+)(?:'s|s) voice\b/i.exec(text) : null)
+  const cycle = /^(?:(?:please|danya)[\s,]+)?(?:change|switch|try) (?:your|the|a|another) (?:voice|different voice)$/i.test(text)
+  if (!wantsList && !cycle && !(named && /voice/i.test(text))) return null
+
+  if (engine === 'ElevenLabs') return "I'm using my ElevenLabs voice right now, so the device voices don't apply."
+  const list = candidateVoices()
+  const names = [...new Set(list.map(shortName))].slice(0, 6)
+  if (wantsList) {
+    return names.length ? `On this device I can use ${names.join(', ')}. Say "use" and a name.` : 'This device only has its default voice.'
+  }
+  if (cycle) {
+    const next = cycleVoice()
+    return `Okay, this is ${next === 'default' ? 'the default voice' : shortName({ name: next } as SpeechSynthesisVoice)}. How do I sound?`
+  }
+  const said_ = named![1].toLowerCase()
+  // "jennys", "jennie", "jennies" → jenny.
+  const tries = [...new Set([said_, said_.replace(/s$/, ''), said_.replace(/ies?$/, 'y'), said_.replace(/ies$/, 'y')])]
+  const all = speechSynthesis.getVoices().filter((v) => /^en/i.test(v.lang))
+  let hit: SpeechSynthesisVoice | undefined
+  for (const want of tries) {
+    // Natural / Premium / Enhanced versions of that name first.
+    hit = all.filter((v) => new RegExp(`\\b${want}\\b`, 'i').test(v.name)).sort((a, b) => score(b) - score(a))[0]
+    if (hit) break
+  }
+  if (!hit) {
+    const tip = tries.includes('jenny') ? ' Jenny comes with Microsoft Edge on a computer.' : ''
+    const asked = tries.reduce((a, b) => (b.length < a.length ? b : a)).replace(/^\w/, (c) => c.toUpperCase())
+    return `I don't have a ${asked} voice on this device.${tip}${names.length ? ` I can use ${names.join(', ')}.` : ''}`
+  }
+  localStorage.setItem(VOICE_PREF_KEY, hit.name)
+  cachedVoice = hit
+  preferredVoiceFailed = false
+  const name = shortName(hit)
+  // Apple has a voice called Karen; it is not the one from the films.
+  if (/^karen$/i.test(name)) return "Okay, this is Apple's Karen voice. It's an Australian voice that just shares the name, not the one from Spider-Man. How do I sound?"
+  return `Hi! This is ${name}'s voice. How do I sound?`
 }
 
 // Voices load asynchronously in Chrome; the first call usually returns nothing.
