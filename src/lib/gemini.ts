@@ -167,6 +167,16 @@ async function buildFastLadder(): Promise<string[]> {
   return [...new Set([...FALLBACK_LADDER, ...first])]
 }
 
+/** Whether the question carries a recording. */
+function hasAudio(history: Msg[]): boolean {
+  const last = history[history.length - 1]
+  return (
+    Boolean(last) &&
+    typeof last.content !== 'string' &&
+    last.content.some((b) => (b as { source?: { media_type?: string } }).source?.media_type?.startsWith('audio/'))
+  )
+}
+
 /** Gemini calls the assistant "model" and takes parts rather than strings. */
 function toContents(history: Msg[], persona: string | null) {
   return history.map((m, i) => {
@@ -177,8 +187,8 @@ function toContents(history: Msg[], persona: string | null) {
             .map((b) => (b as { text?: unknown }).text)
             .filter((t): t is string => typeof t === 'string')
             .join('')) || '…'
-    // A photo arrives in the Anthropic block shape (see brain.ts); Gemini takes
-    // the same bytes as inlineData.
+    // A photo or a recording arrives in the Anthropic image-block shape (see
+    // brain.ts); Gemini takes the same bytes as inlineData, with their type.
     const images =
       typeof m.content === 'string'
         ? []
@@ -239,9 +249,12 @@ async function firstAnswer(history: Msg[], signal: AbortSignal): Promise<Respons
   const models = needsDeepThinking(lastUserText(history)) ? [...new Set([...deep, ...fast])] : fast
   const now = Date.now()
   let lastLimit: Response | null = null
+  // Gemma reads text and pictures but not sound.
+  const hearing = hasAudio(history)
 
   for (const model of models) {
     if ((spentUntil.get(model) ?? 0) > now) continue
+    if (hearing && isGemma(model)) continue
     // Gemma takes no tools; everything else starts from the rung that last
     // worked for it (see TOOLSETS).
     const first = isGemma(model) ? TOOLSETS.length - 1 : (workingToolset.get(model) ?? 0)

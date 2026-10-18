@@ -6,6 +6,7 @@ import type { AskHandlers, Msg } from './anthropic'
 import type { Blade, Panel } from '../store'
 
 export type { AskHandlers, Msg }
+export type Media = string | { data: string; mime: string }
 export type { ConnectionState } from './bridge'
 
 /**
@@ -32,15 +33,19 @@ export async function ask(
   prompt: string,
   history: Msg[],
   handlers: AskHandlers,
-  /** A photo to look at with this question (base64 JPEG, no data: prefix). */
-  image?: string,
+  /** A photo to look at with this question (base64 JPEG, no data: prefix), or
+   *  a recording to listen to ({ data, mime }, Gemini only). */
+  media?: Media,
 ): Promise<{ text: string; tools: string[] }> {
   if (usingBridge) return bridge.ask(prompt, handlers)
-  // The Anthropic block shape serves both brains: Claude reads it as is, and
-  // gemini.ts turns the image block into inlineData.
-  const content: Msg['content'] = image
+  // The Anthropic block shape serves both brains: Claude reads a photo as is,
+  // and gemini.ts turns the block into inlineData whatever its type — which is
+  // how audio, which Claude's API has no block for, reaches Gemini.
+  const data = typeof media === 'string' ? media : media?.data
+  const mime = typeof media === 'string' ? 'image/jpeg' : media?.mime
+  const content: Msg['content'] = data
     ? [
-        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } },
+        { type: 'image', source: { type: 'base64', media_type: mime as 'image/jpeg', data } },
         { type: 'text', text: prompt },
       ]
     : prompt

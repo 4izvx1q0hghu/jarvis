@@ -10,6 +10,7 @@ import { learnFrom, memoryAction } from './lib/memory'
 import { offerEmail, offerPdf, parseEmail } from './lib/documents'
 import { keepAwake } from './lib/awake'
 import { trackLocation } from './lib/weather'
+import { AUDIO_EVENT, spoken, voicePrompt, type VoiceNote } from './lib/voicenote'
 import { isScamRequest, openScan, SCAN_EVENT, scamPanel, scamPrompt, scanForScam } from './lib/scam'
 import { InfoPanel } from './ui/InfoPanel'
 import { WakeVoice } from './ui/WakeVoice'
@@ -39,7 +40,7 @@ import * as hands from './lib/hands'
 import { listenForClap } from './lib/clap'
 import * as camera from './lib/camera'
 import * as kokoro from './lib/kokoro'
-import { TTS_ENGINE } from './config'
+import { DIRECT_BRAIN, TTS_ENGINE } from './config'
 import { forTool, attention } from './lib/fillers'
 import {
   ask,
@@ -53,6 +54,7 @@ import {
   watchConnection,
   connectedLabels,
   usingBridge,
+  type Media,
   type Msg,
 } from './lib/brain'
 import { startAnalyser, micLevel } from './lib/audio'
@@ -155,7 +157,7 @@ export default function App() {
    * pictures) — for pasted text such as a message to check for scams, which
    * must never be acted on.
    */
-  const respond = async (said: string, image?: string, exact?: string): Promise<void> => {
+  const respond = async (said: string, image?: Media, exact?: string): Promise<void> => {
     const mine = ++turn.current
     const stale = () => mine !== turn.current
 
@@ -367,7 +369,9 @@ export default function App() {
       // history stays small enough to send with every question.
       if (!usingBridge) {
         // A checked message is kept whole, so "what should I reply?" works next.
-        history.current.push({ role: 'user', content: image ? `[showed a photo] ${said}` : (exact ?? said) })
+        // The photo or recording itself is not kept, only that one was shared.
+        const shared = !image ? '' : typeof image === 'string' ? '[showed a photo] ' : '[shared a recording] '
+        history.current.push({ role: 'user', content: `${shared}${exact ?? said}` })
         history.current.push({ role: 'assistant', content: text || '…' })
         if (history.current.length > 30) {
           history.current = history.current.slice(-30)
@@ -911,12 +915,34 @@ export default function App() {
     }
     window.addEventListener(SCAN_EVENT, onScan)
 
+    // A voice note or recording from the 🎧 button. Its words are someone
+    // else's, so like a checked message it goes as an exact prompt: no phone
+    // actions, nothing learned from it. Only Gemini can listen.
+    const onAudio = (e: Event) => {
+      const note = (e as CustomEvent<VoiceNote>).detail
+      if (DIRECT_BRAIN !== 'gemini') {
+        showCard({ title: 'Voice notes need a Gemini key', detail: 'Claude’s API can’t listen to audio. Add a free Gemini key to use this.' })
+        return
+      }
+      void respond(`🎧 ${note.name}`, { data: note.data, mime: note.mime }, voicePrompt(note))
+      showInfo({
+        title: `🎧 Listening to ${note.name}…`,
+        lines: [
+          note.seconds ? `${spoken(note.seconds)} long.` : '',
+          note.trimmed ? 'It is long, so Danya is listening to the first 7 minutes.' : '',
+          'Writing out who said what, the mood, a summary and a scam check.',
+        ].filter(Boolean),
+      })
+    }
+    window.addEventListener(AUDIO_EVENT, onAudio)
+
     return () => {
       cancelAnimationFrame(raf)
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('pointerdown', onTap)
       window.removeEventListener(PHOTO_EVENT, onPhoto)
       window.removeEventListener(SCAN_EVENT, onScan)
+      window.removeEventListener(AUDIO_EVENT, onAudio)
       clearIdle()
       if (voicePoll.current) clearInterval(voicePoll.current)
       voice.current?.stop()

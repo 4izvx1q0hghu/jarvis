@@ -6,6 +6,7 @@ import { enableWeather, refreshWeather, useWeather, weatherIcon } from '../lib/w
 import { forgetEverything, forgetFact, forgetName, KIND_LABEL, memorySnapshot, useLearned, type Kind } from '../lib/memory'
 import { unlockSpeech } from '../lib/tts'
 import { checkForScam, closeScan, openScan, useScan } from '../lib/scam'
+import { pickAudio } from '../lib/voicenote'
 
 /**
  * Danya's controls, under the wordmark: time and weather, the microphone mute
@@ -44,7 +45,7 @@ export function Toolbar() {
           onClick={() => (weather ? refreshWeather() : enableWeather())}
           title={weather ? weather.place : 'Tap to show the weather for where you are'}
         >
-          {weather ? `${weatherIcon(weather.code)} ${weather.temp}°` : asking ? '…' : '🌤 Weather'}
+          {weather ? `${weatherIcon(weather.code)} ${weather.temp}°` : asking ? '…' : '🌤'}
           <span style={styles.time}>{time}</span>
         </button>
         <button
@@ -68,6 +69,19 @@ export function Toolbar() {
           title="Show Danya a photo or screenshot"
         >
           📷
+        </button>
+        <button
+          type="button"
+          style={styles.round}
+          onClick={() => {
+            // This tap also unlocks speech for the answer that follows (iOS).
+            unlockSpeech()
+            pickAudio()
+          }}
+          aria-label="Give Danya a voice note or recording to analyse"
+          title="Give Danya a voice note or recording to analyse"
+        >
+          🎧
         </button>
         <button
           type="button"
@@ -266,7 +280,7 @@ const styles: Record<string, CSSProperties> = {
     right: 0,
     display: 'flex',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
     padding: '0 8px',
     zIndex: 50,
     pointerEvents: 'none',
@@ -274,8 +288,9 @@ const styles: Record<string, CSSProperties> = {
   chip: {
     ...glass,
     pointerEvents: 'auto',
-    height: 40,
-    padding: '0 12px',
+    height: 38,
+    padding: '0 11px',
+    flex: 'none',
     borderRadius: 999,
     display: 'flex',
     alignItems: 'center',
@@ -286,11 +301,12 @@ const styles: Record<string, CSSProperties> = {
   round: {
     ...glass,
     pointerEvents: 'auto',
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     flex: 'none',
+    padding: 0,
     borderRadius: '50%',
-    fontSize: 17,
+    fontSize: 16,
     lineHeight: 1,
   },
   alert: { borderColor: '#ff6b6b', boxShadow: '0 0 12px rgba(255,107,107,0.5)' },
