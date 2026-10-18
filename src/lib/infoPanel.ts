@@ -167,14 +167,41 @@ export function parsePanel(raw: string): (InfoPanel & { imageQuery?: string }) |
   return { title, lines, code, imageQuery }
 }
 
-/** "Show me pictures of X", "what does X look like", "images of X". */
+/** "Show me pictures of X", "what does X look like", "images of X". Returns
+ *  null for "pictures of it / that / them": only the model knows what those
+ *  mean, and it asks for its own gallery with an IMAGES line. */
 export function imageRequest(said: string): string | null {
   const text = said.trim().replace(/[.!?]+$/, '')
   const m =
-    /\b(?:show me |find |get |give me )?(?:some |a few )?(?:pictures?|photos?|images?|pics?)\s+of\s+(.+)$/i.exec(text) ??
+    /\b(?:show me |find |get |give me |send me )?(?:some |a few |more )?(?:pictures?|photos?|images?|pics?)\s+(?:of|for)\s+(.+)$/i.exec(text) ??
     /\bwhat (?:does|do|did) (.+?) look like\b/i.exec(text) ??
     /\bshow me (?:what )?(.+?) looks? like\b/i.exec(text)
-  return m ? m[1].replace(/^(?:a|an|the)\s+/i, '').trim() || null : null
+  if (!m) return null
+  const subject = m[1]
+    .replace(/\b(?:please|for me|right now|now|again)\b/gi, ' ')
+    .replace(/^(?:a|an|the|some)\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!subject || /^(?:it|this|that|them|these|those|him|her|his|hers|one|more|another|same|the same)$/i.test(subject)) return null
+  return subject
+}
+
+/** Words worth comparing: no little words, plurals folded ("cafes" → "cafe"). */
+function keyWords(s: string): string[] {
+  return s
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 2 && !/^(the|and|for|with|from|what|who|how|why|are|was|were|this|that|about|into|its)$/.test(w))
+    .map((w) => w.replace(/(?:ies)$/, 'y').replace(/(?:es|s)$/, ''))
+}
+
+/** Whether a Wikipedia title is really about what was asked: they share a key
+ *  word (so "cafes near me" never turns into some unrelated article). */
+function sameTopic(asked: string, title: string): boolean {
+  const want = keyWords(asked)
+  const got = keyWords(title)
+  if (!want.length) return false
+  return want.some((w) => got.some((g) => g === w || ((g.startsWith(w) || w.startsWith(g)) && Math.abs(g.length - w.length) <= 2)))
 }
 
 /**
@@ -281,7 +308,18 @@ export function pictureSubject(said: string): string | null {
   const subject = m[1].replace(/^(?:a|an|the)\s+/i, '').trim()
   // "what is the time", "who are you" and the like are not encyclopedia topics.
   // Sums ("what is 6 times 7") are problems to solve, not topics to look up.
-  if (!subject || subject.split(/\s+/).length > 6 || /\d/.test(subject)) return null
+  if (!subject || subject.split(/\s+/).length > 5 || /\d/.test(subject)) return null
+  // "pictures of it", "that", "them": only the conversation says what these are.
+  if (/^(?:(?:some |more )?(?:pictures?|photos?|images?|pics?)\b|(?:it|this|that|them|these|those|him|her|one)$)/i.test(subject)) return null
+  // Nor is anything personal, local, current or a matter of opinion: "the best
+  // cafe near me", "my store", "the price of gold today" are for the model.
+  if (
+    /\b(near|nearby|around|here|best|top|good|cheap|recommend|should|could|would|my|our|your|me|i|we|price|cost|worth|weather|time|today|tonight|tomorrow|yesterday|now|news|latest|open|how|why|when|where|which|difference|between|vs|versus|happen|happening|wrong|problem)\b/i.test(
+      subject,
+    )
+  ) {
+    return null
+  }
   if (/^(?:you|your|me|my|it|this|that|the time|time|today|the weather|weather|up|happening)\b/i.test(subject)) {
     return null
   }
@@ -298,7 +336,9 @@ export async function wikiCard(subject: string): Promise<InfoPanel | null> {
     if (!search.ok) return null
     const hit = ((await search.json()) as { query?: { search?: { title: string }[] } }).query
       ?.search?.[0]?.title
-    if (!hit) return null
+    // Wikipedia always returns something; a card about the wrong thing is
+    // worse than no card.
+    if (!hit || !sameTopic(subject, hit)) return null
     const res = await fetch(
       `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(hit.replace(/ /g, '_'))}`,
       { signal: AbortSignal.timeout(6000) },

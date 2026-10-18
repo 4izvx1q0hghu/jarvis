@@ -6,10 +6,11 @@ import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
 import { ActionCard } from './ui/ActionCard'
 import { phoneAction, showCard } from './lib/actions'
-import { learnFrom, memoryAction } from './lib/memory'
+import { learnFrom, memoryAction, userName } from './lib/memory'
 import { offerEmail, offerPdf, parseEmail } from './lib/documents'
 import { keepAwake } from './lib/awake'
-import { trackLocation } from './lib/weather'
+import { savedPlace, trackLocation, welcome } from './lib/weather'
+import { nearbyNote, nearbyRequest } from './lib/places'
 import { AUDIO_EVENT, spoken, voicePrompt, type VoiceNote } from './lib/voicenote'
 import { isScamRequest, openScan, SCAN_EVENT, scamPanel, scamPrompt, scanForScam } from './lib/scam'
 import { InfoPanel } from './ui/InfoPanel'
@@ -223,7 +224,23 @@ export default function App() {
 
     // "Bitcoin chart", "price of gold": a live chart goes up at once, and the
     // model is told it is there so its analysis is about that market.
-    const chart = usingBridge || exact !== undefined ? null : chartFor(said)
+    // "Cafes near me", "nearest pharmacy": a Maps button at once, and the model
+    // is told where the user is so it names real places there. No encyclopedia
+    // picture or chart for these.
+    const nearby = usingBridge || exact !== undefined ? null : nearbyRequest(said)
+    const place = savedPlace()
+    if (nearby) {
+      showCard({
+        title: `📍 ${nearby.label} near you`,
+        detail: `${place ? `Around ${place}. ` : ''}Photos, reviews, opening hours and directions are in Maps.`,
+        href: nearby.maps,
+        button: 'Google Maps',
+        extra: { label: 'Apple Maps', href: nearby.apple },
+        keep: true,
+      })
+    }
+
+    const chart = usingBridge || exact !== undefined || nearby ? null : chartFor(said)
     if (chart) {
       showInfo({ title: `${chart.label} · live chart`, lines: [], chart: { url: chart.url, label: chart.label } })
     }
@@ -235,6 +252,7 @@ export default function App() {
     const prompt =
       exact ??
       (chart ? `${said}\n\n[A live ${chart.label} chart (${chart.symbol}) is on the user's screen now.]` : said) +
+        (nearby ? `\n\n${nearbyNote(nearby, place)}` : '') +
         (sites.length ? `\n\n[Links: ${sites.map((s) => `https://${s.replace(/^www\./i, 'www.')}`).join(' ')}]` : '')
 
     // "Show me pictures of…", "what does … look like": a gallery from
@@ -251,10 +269,10 @@ export default function App() {
         mergeInfo({ gallery, galleryQuery: query }, title)
       })
     }
-    const imagesFor = usingBridge || chart || exact !== undefined ? null : imageRequest(said)
+    const imagesFor = usingBridge || chart || nearby || exact !== undefined ? null : imageRequest(said)
     if (imagesFor) addGallery(imagesFor)
 
-    const subject = usingBridge || chart || imagesFor || exact !== undefined ? null : pictureSubject(said)
+    const subject = usingBridge || chart || nearby || imagesFor || exact !== undefined ? null : pictureSubject(said)
     if (subject) {
       void wikiCard(subject).then((card) => {
         if (!card || stale()) return
@@ -725,6 +743,13 @@ export default function App() {
     })
 
     store.getState().setPhase('dormant')
+
+    // Online: say hello like JARVIS would — by name, with the time of day and
+    // the weather where you are. Made here, so it is instant and costs nothing.
+    const hello = createSpeaker()
+    speaker.current = hello
+    hello.say(welcome(userName()))
+    void hello.end()
   }
 
   // -- clap to start --------------------------------------------------------

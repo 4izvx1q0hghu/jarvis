@@ -345,9 +345,20 @@ let cachedVoice: SpeechSynthesisVoice | null | undefined
  * no error and no sound. From then on the default voice is used.
  */
 let preferredVoiceFailed = false
+/** Times in a row the chosen voice said nothing. An online voice gets a second
+ *  chance before being dropped: one slow start is not a broken voice. */
+let voiceMisses = 0
+
+/**
+ * Edge's "Online (Natural)" voices (Jenny, Aria…) and Chrome's Google voices
+ * are made on a server, so they take a second or two to start — far longer
+ * than a voice built into the device.
+ */
+const isOnlineVoice = (v: SpeechSynthesisVoice | null | undefined) =>
+  Boolean(v && (v.localService === false || /\bonline\b|natural/i.test(v.name)))
 
 function pickVoice(): SpeechSynthesisVoice | null {
-  if (preferredVoiceFailed) return null
+  if (preferredVoiceFailed) return IOS ? null : backupVoice()
   if (cachedVoice !== undefined) return cachedVoice
   const all = speechSynthesis.getVoices()
   if (!all.length) return null // not loaded yet — try again next utterance
@@ -388,6 +399,13 @@ export function cycleVoice(): string {
   localStorage.setItem(VOICE_PREF_KEY, next.name)
   cachedVoice = next
   return next.name
+}
+
+/** A female voice built into the device (no server needed), other than the
+ *  chosen one, for when the chosen one fails: Zira on Windows. */
+function backupVoice(): SpeechSynthesisVoice | null {
+  const chosen = cachedVoice?.name
+  return candidateVoices().find((v) => v.localService !== false && v.name !== chosen) ?? null
 }
 
 /** "Jenny" from "Microsoft Jenny Online (Natural) - English (United States)". */
@@ -440,6 +458,7 @@ export function voiceCommand(said: string): string | null {
   localStorage.setItem(VOICE_PREF_KEY, hit.name)
   cachedVoice = hit
   preferredVoiceFailed = false
+  voiceMisses = 0
   const name = shortName(hit)
   // Apple has a voice called Karen; it is not the one from the films.
   if (/^karen$/i.test(name)) return "Okay, this is Apple's Karen voice. It's an Australian voice that just shares the name, not the one from Spider-Man. How do I sound?"
@@ -643,15 +662,21 @@ export function createSpeaker(): Speaker {
         return
       }
       const spoke = await speakNative(item.text)
+      if (spoke) voiceMisses = 0
       if (spoke || cancelled) return
-      // The chosen voice may be the problem rather than the engine: try the
-      // default voice once, and keep it if that one speaks.
+      // The chosen voice may be the problem rather than the engine: say this
+      // sentence with the default voice, and switch to it for good if the
+      // chosen one keeps failing (a device voice at once, an online one twice).
       if (!preferredVoiceFailed && pickVoice()) {
-        const chosen = pickVoice()?.name ?? ''
+        const chosenVoice = pickVoice()
+        const chosen = chosenVoice?.name ?? ''
         if (await speakNative(item.text, true)) {
-          preferredVoiceFailed = true
-          diag.voice = `default (${chosen} failed)`
-          console.warn(`[danya] voice "${chosen}" produced no sound — using the default voice`)
+          voiceMisses++
+          if (!isOnlineVoice(chosenVoice) || voiceMisses >= 2) {
+            preferredVoiceFailed = true
+            diag.voice = `default (${chosen} failed)`
+            console.warn(`[danya] voice "${chosen}" produced no sound — using the default voice`)
+          }
           return
         }
         if (cancelled) return
@@ -707,7 +732,10 @@ export function createSpeaker(): Speaker {
       speechSynthesis.resume()
 
       const u = new SpeechSynthesisUtterance(text)
-      const voice = plain ? null : pickVoice()
+      // The fallback is the browser's default voice on iOS (the one sure to
+      // work there), but elsewhere the best voice built into the device: the
+      // Windows default is a man ("Microsoft David"), which is not Danya.
+      const voice = plain ? (IOS ? null : backupVoice()) : pickVoice()
       if (voice) u.voice = voice
       if (!plain) {
         u.lang = voice?.lang ?? 'en-US'
@@ -757,11 +785,12 @@ export function createSpeaker(): Speaker {
         diag.started++
         diag.lastError = ''
         if (watchdog) clearTimeout(watchdog)
-        // Chrome stops speaking after roughly fifteen seconds unless the engine
-        // is nudged. A pause/resume pair is the standard keepalive and is
-        // inaudible; without it long answers cut off mid-sentence. Not on iOS,
-        // which does not need it and can stay paused after the pair.
-        if (!IOS) {
+        // Chrome's Google voices stop speaking after roughly fifteen seconds
+        // unless the engine is nudged. A pause/resume pair is the standard
+        // keepalive and is inaudible; without it long answers cut off
+        // mid-sentence. Only for those voices: iOS can stay paused after the
+        // pair, and Edge's natural voices (Jenny) can stop dead on a pause.
+        if (!IOS && /^google/i.test(voice?.name ?? '')) {
           keepalive = setInterval(() => {
             if (done) return
             speechSynthesis.pause()
@@ -805,7 +834,11 @@ export function createSpeaker(): Speaker {
       // played. Wait while the engine says it is busy, up to eight seconds, and
       // never cancel; with nothing queued at all, give up and let the caller
       // try the default voice.
-      if (IOS) {
+      //
+      // Nor for an online voice: it is fetching the sound from a server, and
+      // cancelling at 700ms threw away every first sentence Jenny was about to
+      // say — then she was dropped for the default voice. Same patient wait.
+      if (IOS || isOnlineVoice(voice)) {
         const check = () => {
           if (done || started) return
           const busy = speechSynthesis.speaking || speechSynthesis.pending

@@ -222,7 +222,8 @@ function request(model: string, history: Msg[], tools: Record<string, unknown>[]
       ...(tools.length ? { tools } : {}),
       // Room for the model's own thinking as well as the short spoken answer;
       // on Gemini both count against this limit.
-      generationConfig: { maxOutputTokens: 4096 },
+      // Doubled so a long think never leaves too little room for the answer.
+      generationConfig: { maxOutputTokens: 8192 },
     }),
   })
 }

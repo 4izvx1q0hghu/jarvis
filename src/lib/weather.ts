@@ -31,6 +31,30 @@ function load(): Place | null {
 
 export const savedPlace = (): string | undefined => load()?.name || undefined
 
+/** Danya's hello when she comes online: "Good evening, Ahamed. It's 29
+ *  degrees and clear in Petaling Jaya. What's first?" */
+export function welcome(name?: string): string {
+  const hour = new Date().getHours()
+  const part = hour < 5 ? 'You’re up late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  const w = useWeather.getState().weather
+  const town = w?.place?.split(',').slice(-2, -1)[0]?.trim() || w?.place?.split(',')[0]
+  const sky = !w
+    ? ''
+    : w.code === 0
+      ? 'clear'
+      : w.code <= 3
+        ? 'a bit cloudy'
+        : w.code <= 48
+          ? 'hazy'
+          : w.code <= 67 || (w.code >= 80 && w.code <= 82)
+            ? 'raining'
+            : w.code >= 95
+              ? 'stormy'
+              : 'cloudy'
+  const weather = w ? ` It's ${w.temp} degrees and ${sky}${town ? ` in ${town}` : ''}.` : ''
+  return `${part}${name ? `, ${name}` : ''}. I'm online.${weather} What's first?`
+}
+
 /** An emoji for a WMO weather code. */
 export function weatherIcon(code: number): string {
   if (code === 0) return '☀️'
