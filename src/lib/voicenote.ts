@@ -142,7 +142,9 @@ export async function prepareVoiceNote(file: File): Promise<VoiceNote> {
 export function pickAudio(): void {
   const input = document.createElement('input')
   input.type = 'file'
-  input.accept = 'audio/*,video/mp4,video/quicktime,.m4a,.mp3,.wav,.aac,.ogg,.opus,.oga,.flac,.aif,.aiff,.caf,.amr'
+  // Audio only: listing any video type makes iOS offer the photo library and
+  // the camera ("Photo or Video") instead of going straight to Files.
+  input.accept = 'audio/*,.m4a,.mp3,.wav,.aac,.ogg,.opus,.oga,.flac,.aif,.aiff,.caf,.amr'
   input.onchange = async () => {
     const file = input.files?.[0]
     if (!file) return
