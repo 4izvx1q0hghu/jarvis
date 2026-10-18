@@ -3,10 +3,12 @@ import { create } from 'zustand'
 /**
  * Weather and place for the HUD chip, and so Danya knows where you are.
  *
- * Location is asked for only when the user taps the weather chip, and the
- * coordinates and nearest place name stay in this browser's localStorage.
- * Weather comes from Open-Meteo and the place name from BigDataCloud's free
- * reverse geocoder — both free, no key, CORS-enabled.
+ * Location is asked for when Danya is powered up (a tap) or the weather chip
+ * is tapped, then followed for as long as she is open, so the place she knows
+ * and the weather stay right as you move. The coordinates and place name stay
+ * in this browser's localStorage. Weather comes from Open-Meteo and the place
+ * name from BigDataCloud's free reverse geocoder — both free, no key,
+ * CORS-enabled.
  */
 
 const KEY = 'danya.place'
@@ -62,34 +64,72 @@ export function refreshWeather(): void {
   if (place) void fetchWeather(place)
 }
 
-/** From a tap on the chip: ask for location once, then remember it. */
+/** Kilometres between two points (close enough at this scale). */
+function km(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
+  const x = (b.lon - a.lon) * Math.cos(((a.lat + b.lat) / 2) * (Math.PI / 180))
+  const y = b.lat - a.lat
+  return Math.sqrt(x * x + y * y) * 111.32
+}
+
+/** A new position: name the place and update the weather, unless it is
+ *  within half a kilometre of the last one. */
+async function located(pos: GeolocationPosition): Promise<void> {
+  const lat = Number(pos.coords.latitude.toFixed(3))
+  const lon = Number(pos.coords.longitude.toFixed(3))
+  const last = load()
+  useWeather.setState({ asking: false })
+  if (last?.name && km(last, { lat, lon }) < 0.5) {
+    if (!useWeather.getState().weather) void fetchWeather(last)
+    return
+  }
+  let name = ''
+  try {
+    const res = await fetch(
+      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`,
+    )
+    const geo = (await res.json()) as { city?: string; locality?: string; countryName?: string }
+    // "Bandar Sunway, Subang Jaya, Malaysia": the area, the town, the country.
+    name = [...new Set([geo.locality, geo.city, geo.countryName].filter(Boolean))].join(', ')
+  } catch {
+    /* the weather still works without a name */
+  }
+  const place = { lat, lon, name: name || last?.name || '' }
+  try {
+    localStorage.setItem(KEY, JSON.stringify(place))
+  } catch {
+    /* storage blocked: weather for this visit only */
+  }
+  void fetchWeather(place)
+}
+
+let watching = false
+
+/** Follow where the phone is for as long as Danya is open. Asks for location
+ *  the first time, so call it from a tap. */
+export function trackLocation(): void {
+  if (watching || !('geolocation' in navigator)) return
+  watching = true
+  navigator.geolocation.watchPosition(
+    (pos) => void located(pos),
+    (err) => {
+      useWeather.setState({ asking: false })
+      // Refused: stop, and let a tap on the chip ask again.
+      if (err.code === err.PERMISSION_DENIED) watching = false
+    },
+    { enableHighAccuracy: false, maximumAge: 120_000, timeout: 30_000 },
+  )
+}
+
+/** From a tap on the chip: ask for location, then keep following it. */
 export function enableWeather(): void {
   if (!('geolocation' in navigator)) return
   useWeather.setState({ asking: true })
   navigator.geolocation.getCurrentPosition(
-    async (pos) => {
-      const lat = Number(pos.coords.latitude.toFixed(3))
-      const lon = Number(pos.coords.longitude.toFixed(3))
-      let name = ''
-      try {
-        const res = await fetch(
-          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`,
-        )
-        const geo = (await res.json()) as { city?: string; locality?: string; countryName?: string }
-        name = [geo.city || geo.locality, geo.countryName].filter(Boolean).join(', ')
-      } catch {
-        /* the weather still works without a name */
-      }
-      const place = { lat, lon, name }
-      try {
-        localStorage.setItem(KEY, JSON.stringify(place))
-      } catch {
-        /* storage blocked: weather for this visit only */
-      }
-      useWeather.setState({ asking: false })
-      void fetchWeather(place)
+    (pos) => {
+      void located(pos)
+      trackLocation()
     },
     () => useWeather.setState({ asking: false }),
-    { timeout: 15000, maximumAge: 3_600_000 },
+    { timeout: 15000, maximumAge: 600_000 },
   )
 }

@@ -24,10 +24,16 @@ export type InfoPanel = {
   images?: string[]
   /** A live market chart (TradingView embed URL). */
   chart?: { url: string; label: string }
-  /** Pictures from the web, shown as a gallery. */
+  /** Pictures from the web, shown as a gallery, and what was searched. */
   gallery?: GalleryImage[]
+  galleryQuery?: string
+  /** The Wikipedia page the picture and summary came from. */
   source?: string
+  /** The websites the answer was found on (Google Search, pages read). */
+  sources?: WebSource[]
 }
+
+export type WebSource = { title: string; uri: string }
 
 export type GalleryImage = { thumb: string; full: string; title: string }
 
@@ -170,10 +176,35 @@ export function imageRequest(said: string): string | null {
 }
 
 /**
- * Pictures from Wikimedia Commons: free, no key, CORS-enabled, and served from
- * upload.wikimedia.org (already allowed by the page's CSP). Never throws.
+ * Pictures from the web for a gallery: Wikimedia Commons, and Openverse (800
+ * million openly licensed photos from Flickr, museums and more). Both are free,
+ * need no key, and allow calls from a web page. Both are asked at once, but
+ * Openverse can take many seconds, so the Commons pictures come back as soon
+ * as they are in and Openverse's are handed to `onMore`, added after them,
+ * whenever they arrive. Never throws.
  */
-export async function wikiImages(query: string, count = 6): Promise<GalleryImage[]> {
+export async function wikiImages(
+  query: string,
+  count = 6,
+  onMore?: (all: GalleryImage[]) => void,
+): Promise<GalleryImage[]> {
+  const open = openverseImages(query, count)
+  const commons = await commonsImages(query, count)
+  if (!commons.length) return open
+  if (onMore) {
+    void open.then((more) => {
+      const seen = new Set(commons.map((c) => c.title.toLowerCase()))
+      const extra = more.filter((m) => !seen.has(m.title.toLowerCase()))
+      if (extra.length) onMore([...commons, ...extra])
+    })
+  }
+  return commons
+}
+
+/** Commons search. Thumbnails at 500px and, for tapping, 1280px: the
+ *  standard sizes Wikimedia serves quickly. Originals can be many megabytes
+ *  and are often refused to apps, so they are only used when small. */
+async function commonsImages(query: string, count: number): Promise<GalleryImage[]> {
   try {
     const params = new URLSearchParams({
       action: 'query',
@@ -184,16 +215,17 @@ export async function wikiImages(query: string, count = 6): Promise<GalleryImage
       gsrnamespace: '6',
       gsrlimit: String(count * 2),
       prop: 'imageinfo',
-      iiprop: 'url|mime',
-      iiurlwidth: '480',
+      iiprop: 'url|mime|size',
+      iiurlwidth: '500',
     })
     const res = await fetch(`https://commons.wikimedia.org/w/api.php?${params}`, {
       signal: AbortSignal.timeout(8000),
     })
     if (!res.ok) return []
+    type Info = { thumburl?: string; url?: string; mime?: string; width?: number }
     const pages = Object.values(
       ((await res.json()) as {
-        query?: { pages?: Record<string, { title: string; index?: number; imageinfo?: { thumburl?: string; url?: string; mime?: string }[] }> }
+        query?: { pages?: Record<string, { title: string; index?: number; imageinfo?: Info[] }> }
       }).query?.pages ?? {},
     )
     return pages
@@ -201,11 +233,41 @@ export async function wikiImages(query: string, count = 6): Promise<GalleryImage
       .map((p) => ({ info: p.imageinfo?.[0], title: p.title.replace(/^File:/, '').replace(/\.[a-z0-9]+$/i, '') }))
       .filter((p) => p.info?.thumburl && /^image\/(jpeg|png|webp)/.test(p.info.mime ?? ''))
       .slice(0, count)
-      .map((p) => ({ thumb: p.info!.thumburl!, full: p.info!.url ?? p.info!.thumburl!, title: p.title }))
+      .map((p) => {
+        const thumb = p.info!.thumburl!
+        const big = (p.info!.width ?? 0) > 1280 && /\/500px-/.test(thumb) ? thumb.replace('/500px-', '/1280px-') : p.info!.url
+        return { thumb, full: big ?? thumb, title: p.title }
+      })
   } catch {
     return []
   }
 }
+
+/** Openverse search. Its thumbnails come through its own server, so they load
+ *  even when the photo's home site is slow; tapping opens the photo's page. */
+async function openverseImages(query: string, count: number): Promise<GalleryImage[]> {
+  try {
+    const params = new URLSearchParams({ q: query, page_size: String(count), mature: 'false' })
+    const res = await fetch(`https://api.openverse.org/v1/images/?${params}`, { signal: AbortSignal.timeout(25_000) })
+    if (!res.ok) return []
+    const data = (await res.json()) as {
+      results?: { title?: string; thumbnail?: string; url?: string; foreign_landing_url?: string; source?: string }[]
+    }
+    return (data.results ?? [])
+      .filter((r) => r.thumbnail)
+      .map((r) => ({
+        thumb: r.thumbnail!,
+        full: r.foreign_landing_url || r.url || r.thumbnail!,
+        title: `${r.title || query}${r.source ? ` (${r.source})` : ''}`,
+      }))
+  } catch {
+    return []
+  }
+}
+
+/** Every picture on the web for this, in Google Images. */
+export const googleImages = (query: string) =>
+  `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}`
 
 /** The subject of a "who is / what is / tell me about / show me" question. */
 export function pictureSubject(said: string): string | null {

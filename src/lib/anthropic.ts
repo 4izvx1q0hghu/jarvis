@@ -18,8 +18,13 @@ const api = () =>
 export type Msg = Anthropic.Beta.BetaMessageParam
 
 /** Something the model made along the way that belongs on screen: code it ran,
- *  that code's output, or an image (a chart it drew). */
-export type Artifact = { code?: string; output?: string; image?: string }
+ *  that code's output, an image (a chart it drew), or the websites it used. */
+export type Artifact = {
+  code?: string
+  output?: string
+  image?: string
+  sources?: { title: string; uri: string }[]
+}
 
 export type AskHandlers = {
   /** Fires for each chunk of the spoken answer. */

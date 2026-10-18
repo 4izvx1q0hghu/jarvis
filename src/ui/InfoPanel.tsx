@@ -1,4 +1,4 @@
-import { closeInfo, useInfoPanel } from '../lib/infoPanel'
+import { closeInfo, googleImages, useInfoPanel } from '../lib/infoPanel'
 
 /**
  * The screen half of an answer: a live market chart, a picture, key points,
@@ -34,13 +34,22 @@ export function InfoPanel() {
           </div>
         )}
 
-        {panel.image && <img className="dp-image" src={panel.image} alt={panel.title} />}
+        {panel.image && (
+          <img
+            className="dp-image"
+            src={panel.image}
+            alt={panel.title}
+            onError={(e) => (e.currentTarget.style.display = 'none')}
+          />
+        )}
 
         {panel.gallery && panel.gallery.length > 0 && (
           <div className="dp-gallery">
             {panel.gallery.map((img) => (
+              // No lazy loading: iOS Safari can leave lazy images inside a
+              // scrolling panel blank. There are only a handful of them.
               <a key={img.thumb} href={img.full} target="_blank" rel="noreferrer" title={img.title}>
-                <img src={img.thumb} alt={img.title} loading="lazy" />
+                <img src={img.thumb} alt={img.title} onError={(e) => (e.currentTarget.parentElement!.style.display = 'none')} />
               </a>
             ))}
           </div>
@@ -77,13 +86,28 @@ export function InfoPanel() {
           <img key={i} className="dp-image dp-plot" src={src} alt={`${panel.title} chart ${i + 1}`} />
         ))}
 
+        {panel.sources && panel.sources.length > 0 && (
+          <div className="dp-sources">
+            <span>From the web:</span>
+            {panel.sources.map((s) => (
+              <a key={s.uri} href={s.uri} target="_blank" rel="noreferrer">
+                {s.title}
+              </a>
+            ))}
+          </div>
+        )}
         {panel.source && (
           <a className="dp-source" href={panel.source} target="_blank" rel="noreferrer">
-            Source: Wikipedia ↗
+            Wikipedia page ↗
           </a>
         )}
         {panel.gallery && panel.gallery.length > 0 && (
-          <span className="dp-credit">Pictures: Wikimedia Commons · tap one to open it</span>
+          <span className="dp-credit">
+            Tap a picture to open it ·{' '}
+            <a href={googleImages(panel.galleryQuery ?? panel.title)} target="_blank" rel="noreferrer">
+              More on Google Images ↗
+            </a>
+          </span>
         )}
       </div>
     </div>

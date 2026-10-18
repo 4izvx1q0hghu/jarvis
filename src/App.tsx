@@ -9,6 +9,8 @@ import { phoneAction, showCard } from './lib/actions'
 import { memoryAction } from './lib/memory'
 import { offerEmail, offerPdf, parseEmail } from './lib/documents'
 import { keepAwake } from './lib/awake'
+import { trackLocation } from './lib/weather'
+import { isScamRequest, openScan, SCAN_EVENT, scamPanel, scamPrompt, scanForScam } from './lib/scam'
 import { InfoPanel } from './ui/InfoPanel'
 import { WakeVoice } from './ui/WakeVoice'
 import { TapToHear } from './ui/TapToHear'
@@ -25,6 +27,7 @@ import {
   useInfoPanel,
   wikiCard,
   wikiImages,
+  type GalleryImage,
 } from './lib/infoPanel'
 import { chartFor } from './lib/charts'
 import { useStore } from './store'
@@ -146,7 +149,13 @@ export default function App() {
 
   // -- one turn -------------------------------------------------------------
 
-  const respond = async (said: string, image?: string): Promise<void> => {
+  /**
+   * `exact`, when given, is sent to the model as it is, in place of what was
+   * said, and skips everything worked out on the device (phone actions, charts,
+   * pictures) — for pasted text such as a message to check for scams, which
+   * must never be acted on.
+   */
+  const respond = async (said: string, image?: string, exact?: string): Promise<void> => {
     const mine = ++turn.current
     const stale = () => mine !== turn.current
 
@@ -169,16 +178,23 @@ export default function App() {
     // Memory ("my name is…", "remember that…") and phone actions ("call Ali",
     // "open Instagram", …) are answered here on the device: instant, no model
     // call, and phone actions always sit behind a button to tap.
-    const remembered = memoryAction(said)
+    const remembered = exact === undefined ? memoryAction(said) : null
     // "What am I looking at?" with no photo yet: iOS only opens the camera
     // from a tap, so light up the camera button and ask for one.
-    const wantsLook = !image && !usingBridge && isLookRequest(said)
+    const wantsLook = exact === undefined && !image && !usingBridge && isLookRequest(said)
     if (wantsLook) useLook.setState({ pending: said })
+    // "Is this a scam?" with nothing to check: open the paste box.
+    const wantsScan = exact === undefined && !image && !usingBridge && isScamRequest(said)
+    if (wantsScan) openScan()
     const local = remembered
       ? { say: remembered, card: undefined }
       : wantsLook
         ? { say: 'Sure! Tap the camera button up top and take a photo, or pick a screenshot.', card: undefined }
-        : phoneAction(said)
+        : wantsScan
+          ? { say: 'Sure. Paste the message, email or link in the box, then tap Check it.', card: undefined }
+          : exact === undefined
+            ? phoneAction(said)
+            : null
     if (local) {
       if (local.card) showCard(local.card)
       s.pushTurn({ id: newId(), role: 'jarvis', text: local.say })
@@ -204,7 +220,7 @@ export default function App() {
 
     // "Bitcoin chart", "price of gold": a live chart goes up at once, and the
     // model is told it is there so its analysis is about that market.
-    const chart = usingBridge ? null : chartFor(said)
+    const chart = usingBridge || exact !== undefined ? null : chartFor(said)
     if (chart) {
       showInfo({ title: `${chart.label} · live chart`, lines: [], chart: { url: chart.url, label: chart.label } })
     }
@@ -214,22 +230,28 @@ export default function App() {
       .map((m) => m[1])
       .filter((s) => !/^https?:\/\//i.test(s))
     const prompt =
+      exact ??
       (chart ? `${said}\n\n[A live ${chart.label} chart (${chart.symbol}) is on the user's screen now.]` : said) +
-      (sites.length ? `\n\n[Links: ${sites.map((s) => `https://${s.replace(/^www\./i, 'www.')}`).join(' ')}]` : '')
+        (sites.length ? `\n\n[Links: ${sites.map((s) => `https://${s.replace(/^www\./i, 'www.')}`).join(' ')}]` : '')
 
     // "Show me pictures of…", "what does … look like": a gallery from
     // Wikimedia Commons, up as soon as it arrives. The model can ask for one
     // too, with an IMAGES: line in its panel (handled after the answer).
     const addGallery = (query: string) => {
-      void wikiImages(query).then((gallery) => {
+      const title = query.replace(/^\w/, (c) => c.toUpperCase())
+      // Openverse's photos arrive later; add them only if the panel is still up.
+      const more = (gallery: GalleryImage[]) => {
+        if (!stale() && useInfoPanel.getState().panel) mergeInfo({ gallery, galleryQuery: query }, title)
+      }
+      void wikiImages(query, 6, more).then((gallery) => {
         if (!gallery.length || stale()) return
-        mergeInfo({ gallery }, query.replace(/^\w/, (c) => c.toUpperCase()))
+        mergeInfo({ gallery, galleryQuery: query }, title)
       })
     }
-    const imagesFor = usingBridge || chart ? null : imageRequest(said)
+    const imagesFor = usingBridge || chart || exact !== undefined ? null : imageRequest(said)
     if (imagesFor) addGallery(imagesFor)
 
-    const subject = usingBridge || chart || imagesFor ? null : pictureSubject(said)
+    const subject = usingBridge || chart || imagesFor || exact !== undefined ? null : pictureSubject(said)
     if (subject) {
       void wikiCard(subject).then((card) => {
         if (!card || stale()) return
@@ -267,6 +289,8 @@ export default function App() {
             mergeInfo({ output: current?.output ? `${current.output}\n${a.output}` : a.output })
           } else if (a.image) {
             mergeInfo({ images: [a.image] })
+          } else if (a.sources) {
+            mergeInfo({ sources: a.sources }, 'From the web')
           }
         },
         onText: (raw) => {
@@ -338,7 +362,8 @@ export default function App() {
       // The photo itself is not kept — only that one was shown — so the
       // history stays small enough to send with every question.
       if (!usingBridge) {
-        history.current.push({ role: 'user', content: image ? `[showed a photo] ${said}` : said })
+        // A checked message is kept whole, so "what should I reply?" works next.
+        history.current.push({ role: 'user', content: image ? `[showed a photo] ${said}` : (exact ?? said) })
         history.current.push({ role: 'assistant', content: text || '…' })
         if (history.current.length > 30) {
           history.current = history.current.slice(-30)
@@ -513,6 +538,8 @@ export default function App() {
     unlockSpeech()
     // Keep the phone from auto-locking, which would pause her, while she's open.
     keepAwake()
+    // And follow where she is, so she always knows the place and its weather.
+    trackLocation()
     await sfx.unlockAudio()
     sfx.play('boot')
     // The score. Must be started from inside this click handler for the same
@@ -869,11 +896,23 @@ export default function App() {
     }
     window.addEventListener(PHOTO_EVENT, onPhoto)
 
+    // Pasted into the scam checker: the quick check on the phone goes up at
+    // once, then the model checks the web and gives the verdict over it.
+    const onScan = (e: Event) => {
+      const text = (e as CustomEvent<string>).detail
+      const report = scanForScam(text)
+      const preview = text.replace(/\s+/g, ' ').slice(0, 90)
+      void respond(`Is this a scam? “${preview}${text.length > 90 ? '…' : ''}”`, undefined, scamPrompt(text, report))
+      showInfo(scamPanel(report))
+    }
+    window.addEventListener(SCAN_EVENT, onScan)
+
     return () => {
       cancelAnimationFrame(raf)
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('pointerdown', onTap)
       window.removeEventListener(PHOTO_EVENT, onPhoto)
+      window.removeEventListener(SCAN_EVENT, onScan)
       clearIdle()
       if (voicePoll.current) clearInterval(voicePoll.current)
       voice.current?.stop()

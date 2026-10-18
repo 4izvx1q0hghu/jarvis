@@ -56,7 +56,8 @@ const workingToolset = new Map<string, number>()
 type Chunk = {
   candidates?: {
     content?: { parts?: Part[] }
-    groundingMetadata?: unknown
+    groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[] }
+    urlContextMetadata?: { urlMetadata?: { retrievedUrl?: string; urlRetrievalStatus?: string }[] }
     finishReason?: string
   }[]
   promptFeedback?: { blockReason?: string }
@@ -291,6 +292,21 @@ export async function ask(
     const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader()
     let buffer = ''
     let blocked = false
+    // The websites behind the answer — search results it used, pages it read —
+    // so the user can see where it came from and open them.
+    const sources = new Map<string, { title: string; uri: string }>()
+    const addSource = (uri?: string, title?: string) => {
+      if (!uri || sources.size >= 6) return false
+      let name = title?.trim()
+      try {
+        if (!name) name = new URL(uri).hostname.replace(/^www\./, '')
+      } catch {
+        return false
+      }
+      if ([...sources.values()].some((s) => s.title === name)) return false
+      sources.set(uri, { title: name, uri })
+      return true
+    }
     for (;;) {
       const { value, done } = await reader.read()
       if (done) break
@@ -309,6 +325,14 @@ export async function ask(
           tools.push('web_search')
           searched = true
         }
+        let more = false
+        for (const c of candidate?.groundingMetadata?.groundingChunks ?? []) {
+          more = addSource(c.web?.uri, c.web?.title) || more
+        }
+        for (const u of candidate?.urlContextMetadata?.urlMetadata ?? []) {
+          if (!u.urlRetrievalStatus || /SUCCESS/.test(u.urlRetrievalStatus)) more = addSource(u.retrievedUrl) || more
+        }
+        if (more) handlers.onArtifact?.({ sources: [...sources.values()] })
         for (const part of candidate?.content?.parts ?? []) {
           // Code the model ran, what it printed, and any chart it drew go to
           // the screen, never into the voice.

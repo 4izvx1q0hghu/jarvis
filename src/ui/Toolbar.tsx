@@ -5,11 +5,12 @@ import { pickPhoto, useLook } from '../lib/photo'
 import { enableWeather, refreshWeather, useWeather, weatherIcon } from '../lib/weather'
 import { forgetEverything, forgetFact, forgetName, memorySnapshot } from '../lib/memory'
 import { unlockSpeech } from '../lib/tts'
+import { checkForScam, closeScan, openScan, useScan } from '../lib/scam'
 
 /**
  * Danya's controls, under the wordmark: time and weather, the microphone mute
- * switch, the camera (photo or screenshot for her to look at), and the memory
- * manager. Only shown once she is powered up.
+ * switch, the camera (photo or screenshot for her to look at), the scam
+ * checker, and the memory manager. Only shown once she is powered up.
  */
 export function Toolbar() {
   const phase = useStore((s) => s.phase)
@@ -18,6 +19,7 @@ export function Toolbar() {
   const { weather, asking } = useWeather()
   const [now, setNow] = useState(() => new Date())
   const [memoryOpen, setMemoryOpen] = useState(false)
+  const scanOpen = useScan((s) => s.open)
 
   useEffect(() => {
     refreshWeather()
@@ -70,6 +72,15 @@ export function Toolbar() {
         <button
           type="button"
           style={styles.round}
+          onClick={openScan}
+          aria-label="Check a message or link for scams"
+          title="Check a message or link for scams"
+        >
+          🛡️
+        </button>
+        <button
+          type="button"
+          style={styles.round}
           onClick={() => setMemoryOpen(true)}
           aria-label="What Danya remembers"
           title="What Danya remembers"
@@ -79,7 +90,68 @@ export function Toolbar() {
       </div>
       {muted && <div style={styles.mutedNote}>Microphone muted</div>}
       {memoryOpen && <MemoryPanel onClose={() => setMemoryOpen(false)} />}
+      {scanOpen && <ScanPanel />}
     </>
+  )
+}
+
+/** Paste a message, email or link; Danya says whether it is a scam. */
+function ScanPanel() {
+  const [text, setText] = useState('')
+  const [note, setNote] = useState('')
+
+  const paste = async () => {
+    try {
+      const clip = await navigator.clipboard.readText()
+      if (clip.trim()) setText(clip)
+      else setNote('Nothing copied yet. Copy the message first, then tap Paste.')
+    } catch {
+      setNote('Press and hold in the box, then tap Paste.')
+    }
+  }
+  const check = () => {
+    if (!text.trim()) return
+    // This tap also unlocks speech for the verdict that follows (iOS).
+    unlockSpeech()
+    closeScan()
+    checkForScam(text)
+  }
+
+  return (
+    <div className="dp-wrap" style={{ justifyContent: 'center' }}>
+      <div className="dp-card" role="dialog" aria-label="Scam checker">
+        <div className="dp-head">
+          <span className="dp-dot" aria-hidden="true" />
+          <span className="dp-title">🛡️ Is it a scam?</span>
+          <button type="button" className="dp-close" onClick={closeScan} aria-label="Close">
+            ✕
+          </button>
+        </div>
+        <textarea
+          style={styles.box}
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value)
+            setNote('')
+          }}
+          placeholder="Paste a message, email or link here…"
+          rows={6}
+        />
+        {note && <p style={styles.hint}>{note}</p>}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="button" style={styles.secondaryBtn} onClick={() => void paste()}>
+            📋 Paste
+          </button>
+          <button type="button" style={{ ...styles.primaryBtn, opacity: text.trim() ? 1 : 0.5 }} onClick={check}>
+            Check it
+          </button>
+        </div>
+        <p style={styles.hint}>
+          Danya looks for warning signs on your phone, then checks the sender and links on the web. Don’t tap
+          links in a message you’re not sure about.
+        </p>
+      </div>
+    </div>
   )
 }
 
@@ -157,15 +229,16 @@ const styles: Record<string, CSSProperties> = {
     right: 0,
     display: 'flex',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
+    padding: '0 8px',
     zIndex: 50,
     pointerEvents: 'none',
   },
   chip: {
     ...glass,
     pointerEvents: 'auto',
-    height: 42,
-    padding: '0 14px',
+    height: 40,
+    padding: '0 12px',
     borderRadius: 999,
     display: 'flex',
     alignItems: 'center',
@@ -176,10 +249,11 @@ const styles: Record<string, CSSProperties> = {
   round: {
     ...glass,
     pointerEvents: 'auto',
-    width: 42,
-    height: 42,
+    width: 40,
+    height: 40,
+    flex: 'none',
     borderRadius: '50%',
-    fontSize: 18,
+    fontSize: 17,
     lineHeight: 1,
   },
   alert: { borderColor: '#ff6b6b', boxShadow: '0 0 12px rgba(255,107,107,0.5)' },
@@ -207,4 +281,36 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 13,
   },
   hint: { margin: 0, fontSize: 13, opacity: 0.7, lineHeight: 1.5 },
+  box: {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: 12,
+    borderRadius: 12,
+    border: `1px solid ${cyan}44`,
+    background: 'rgba(0, 8, 14, 0.7)',
+    color: '#e6faff',
+    // 16px or more stops iOS zooming the page when the box is tapped.
+    fontSize: 16,
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    resize: 'vertical',
+  },
+  primaryBtn: {
+    flex: 1,
+    padding: '13px 12px',
+    borderRadius: 10,
+    border: 'none',
+    background: cyan,
+    color: '#02060a',
+    fontWeight: 700,
+    fontSize: 16,
+  },
+  secondaryBtn: {
+    flex: 1,
+    padding: '13px 12px',
+    borderRadius: 10,
+    border: `1px solid ${cyan}66`,
+    background: 'transparent',
+    color: '#d8f6ff',
+    fontSize: 16,
+  },
 }
