@@ -59,11 +59,14 @@ export type Chart = {
 
 /**
  * Exchanges whose data TradingView only shows on its own site: an embedded
- * chart says "This symbol is only available on TradingView" (checked for
- * Bursa Malaysia; India's NSE and BSE are licensed the same way). For these the
- * panel offers the TradingView page instead of a dead chart.
+ * chart says "This symbol is only available on TradingView" and then quietly
+ * shows Apple instead. Checked one by one (Oct 2026): Bursa Malaysia, Tokyo,
+ * Hong Kong, Singapore, Thailand, Korea, Taiwan, London and India's NSE are
+ * blocked; BSE, TPEX and FTSE Malaysia indices share those licences. For these
+ * the panel offers the TradingView page instead of a wrong chart. (Working:
+ * US, crypto, forex, commodities, Xetra, Euronext, ASX, TSX, B3, IDX, SSE.)
  */
-const SITE_ONLY = /^(MYX|FTSEMYX|NSE|BSE)$/i
+const SITE_ONLY = /^(MYX|FTSEMYX|TSE|HKEX|SGX|SET|KRX|TWSE|TPEX|LSE|LSIN|NSE|BSE)$/i
 
 /** A chart for any TradingView symbol, "EXCHANGE:TICKER" or a bare ticker. */
 export function symbolChart(symbol: string, label?: string): Chart {

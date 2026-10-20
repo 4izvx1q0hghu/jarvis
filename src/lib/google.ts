@@ -18,8 +18,9 @@
 
 import type { ActionCard } from './actions'
 
-/** Built in once the Google Cloud project exists; empty until then. */
-const BUILT_IN_CLIENT_ID = ''
+/** The "Danya website" OAuth client in the owner's Google Cloud project
+ *  (danya-512214), allowed for https://4izvx1q0hghu.github.io/jarvis/. */
+const BUILT_IN_CLIENT_ID = '895099904553-1ekoc01g246b0f5nihvpi273qecb1i2o.apps.googleusercontent.com'
 
 const SCOPES = [
   // Who is signed in (name, email, picture), to show on screen.
