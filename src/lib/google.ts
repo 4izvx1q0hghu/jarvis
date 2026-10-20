@@ -22,6 +22,10 @@ import type { ActionCard } from './actions'
 const BUILT_IN_CLIENT_ID = ''
 
 const SCOPES = [
+  // Who is signed in (name, email, picture), to show on screen.
+  'openid',
+  'email',
+  'profile',
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/calendar.readonly',
 ].join(' ')
@@ -31,6 +35,31 @@ const TOKEN_KEY = 'danya.googleToken'
 const STATE_KEY = 'danya.googleState'
 const PENDING_KEY = 'danya.googlePending'
 const LINKED_KEY = 'danya.googleLinked'
+const ACCOUNT_KEY = 'danya.googleAccount'
+
+export type GoogleAccount = { name: string; email: string; picture?: string }
+
+/** The connected account, as last seen (kept so it shows before a refetch). */
+export function googleAccount(): GoogleAccount | null {
+  try {
+    return JSON.parse(get(ACCOUNT_KEY) ?? 'null') as GoogleAccount | null
+  } catch {
+    return null
+  }
+}
+
+/** Fetches who is signed in. Never throws. */
+export async function refreshGoogleAccount(): Promise<GoogleAccount | null> {
+  try {
+    const me = await api<{ name?: string; email?: string; picture?: string }>('https://openidconnect.googleapis.com/v1/userinfo')
+    if (!me.email) return googleAccount()
+    const account = { name: me.name ?? me.email, email: me.email, picture: me.picture }
+    set(ACCOUNT_KEY, JSON.stringify(account))
+    return account
+  } catch {
+    return googleAccount()
+  }
+}
 
 type Token = { value: string; expires: number }
 
@@ -93,6 +122,22 @@ export function captureGoogleReturn(): void {
   const seconds = Number(back.get('expires_in') ?? 3600)
   set(TOKEN_KEY, JSON.stringify({ value, expires: Date.now() + seconds * 1000 } satisfies Token))
   set(LINKED_KEY, '1')
+  justBack = true
+}
+
+let justBack = false
+/** True once, right after returning signed in from Google. */
+export function justConnected(): boolean {
+  const was = justBack
+  justBack = false
+  return was
+}
+
+/** For the HUD's SYSTEMS list. */
+export function googleLabels(): string[] {
+  if (!googleReady()) return []
+  const who = googleAccount()
+  return [`Google${who ? ` · ${who.email}` : ''}`, 'Gmail (read-only)', 'Calendar (read-only)']
 }
 
 /** Off to Google's sign-in page. `question` is asked again on the way back. */
@@ -120,6 +165,7 @@ export function disconnectGoogle(): void {
   const t = token()
   set(TOKEN_KEY, null)
   set(LINKED_KEY, null)
+  set(ACCOUNT_KEY, null)
   if (t) void fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(t.value)}`, { method: 'POST' }).catch(() => {})
 }
 

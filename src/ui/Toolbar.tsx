@@ -7,6 +7,7 @@ import { forgetEverything, forgetFact, forgetName, KIND_LABEL, memorySnapshot, u
 import { unlockSpeech } from '../lib/tts'
 import { checkForScam, closeScan, openScan, useScan } from '../lib/scam'
 import { pickAudio } from '../lib/voicenote'
+import { connectGoogle, disconnectGoogle, googleAccount, googleClientId, googleReady } from '../lib/google'
 
 /**
  * Danya's controls, under the wordmark: time and weather, the microphone mute
@@ -257,6 +258,48 @@ function MemoryPanel({ onClose }: { onClose: () => void }) {
           Stored only on this phone. I never keep passwords, codes or card numbers. Delete anything you don’t want me
           to know.
         </p>
+        <GoogleRow />
+      </div>
+    </div>
+  )
+}
+
+/** The connected Google account (name, email, picture), with Connect or
+ *  Disconnect. Read-only access to Gmail and Calendar. */
+function GoogleRow() {
+  const [, redraw] = useState(0)
+  const ready = googleReady()
+  const who = googleAccount()
+  if (!googleClientId()) return null
+  return (
+    <div style={styles.memGroup}>
+      <div style={styles.memHead}>🔗 Connections</div>
+      <div style={styles.memRow}>
+        {ready && who?.picture ? (
+          <img src={who.picture} alt="" style={styles.avatar} referrerPolicy="no-referrer" />
+        ) : (
+          <span style={styles.avatarBlank}>G</span>
+        )}
+        <span style={{ flex: 1 }}>
+          {ready ? (
+            <>
+              Google: {who?.name ?? 'connected'}
+              {who?.email && <span style={styles.sub}> · {who.email}</span>}
+              <span style={styles.sub}> · Gmail and Calendar, read-only</span>
+            </>
+          ) : (
+            'Google: not connected. Lets me read your Gmail and Calendar (never send or delete).'
+          )}
+        </span>
+        {ready ? (
+          <button type="button" style={styles.del} onClick={() => (disconnectGoogle(), redraw((n) => n + 1))}>
+            Disconnect
+          </button>
+        ) : (
+          <button type="button" style={styles.connect} onClick={() => connectGoogle()}>
+            Connect
+          </button>
+        )}
       </div>
     </div>
   )
@@ -326,6 +369,27 @@ const styles: Record<string, CSSProperties> = {
   },
   memRow: { display: 'flex', gap: 10, alignItems: 'center', fontSize: 15 },
   memGroup: { display: 'grid', gap: 8 },
+  avatar: { width: 30, height: 30, borderRadius: '50%', flex: 'none' },
+  avatarBlank: {
+    width: 30,
+    height: 30,
+    borderRadius: '50%',
+    flex: 'none',
+    display: 'grid',
+    placeItems: 'center',
+    background: 'rgba(95, 227, 255, 0.15)',
+    color: cyan,
+    fontWeight: 700,
+  },
+  sub: { opacity: 0.65, fontSize: 13 },
+  connect: {
+    border: `1px solid ${cyan}`,
+    background: 'transparent',
+    color: cyan,
+    borderRadius: 8,
+    padding: '6px 10px',
+    fontSize: 13,
+  },
   memHead: { fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: cyan, opacity: 0.85 },
   learned: {
     ...glass,

@@ -11,7 +11,16 @@ import { offerEmail, offerPdf, parseEmail } from './lib/documents'
 import { keepAwake } from './lib/awake'
 import { savedPlace, trackLocation, welcome } from './lib/weather'
 import { nearbyNote, nearbyRequest } from './lib/places'
-import { googleCommand, googleContext, googleNeed, googleReady, googleReply, takePendingQuestion } from './lib/google'
+import {
+  googleCommand,
+  googleContext,
+  googleNeed,
+  googleReady,
+  googleReply,
+  justConnected,
+  refreshGoogleAccount,
+  takePendingQuestion,
+} from './lib/google'
 import { AUDIO_EVENT, spoken, voicePrompt, type VoiceNote } from './lib/voicenote'
 import { isScamRequest, openScan, SCAN_EVENT, scamPanel, scamPrompt, scanForScam } from './lib/scam'
 import { InfoPanel } from './ui/InfoPanel'
@@ -768,7 +777,20 @@ export default function App() {
 
     store.getState().setPhase('dormant')
 
-    // Back from Google's sign-in page: ask the question that sent them there.
+    // Signed in to Google: learn who, for the SYSTEMS list and the card below.
+    if (googleReady()) {
+      void refreshGoogleAccount().then(() => store.getState().setConnected(connectedLabels()))
+    }
+    // Just back from Google's sign-in page: say so, then ask the question that
+    // sent them there.
+    if (justConnected()) {
+      void refreshGoogleAccount().then((who) =>
+        showCard({
+          title: '✅ Google connected',
+          detail: `${who ? `${who.name} (${who.email})` : 'Your account'}. Gmail and Calendar, read-only.`,
+        }),
+      )
+    }
     const pending = takePendingQuestion()
     if (pending) {
       void respond(pending)

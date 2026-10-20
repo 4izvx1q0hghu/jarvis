@@ -2,6 +2,7 @@ import { BACKEND, DIRECT_BRAIN } from '../config'
 import * as anthropic from './anthropic'
 import * as gemini from './gemini'
 import * as bridge from './bridge'
+import { googleLabels } from './google'
 import type { AskHandlers, Msg } from './anthropic'
 import type { Blade, Panel } from '../store'
 
@@ -145,5 +146,5 @@ export function watchConnection(
 
 /** Labels for the HUD's SYSTEMS rail. */
 export function connectedLabels(): string[] {
-  return usingBridge ? bridge.bridgeServers() : direct.connectedLabels()
+  return usingBridge ? bridge.bridgeServers() : [...direct.connectedLabels(), ...googleLabels()]
 }
